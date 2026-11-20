@@ -1,0 +1,18 @@
+{
+  "name": "whokiller",
+  "version": "0.1.0",
+  "description": "WhoKiller — göz kırpma tabanlı sosyal çıkarım oyunu: Katil · Polis · Vatandaş (HTML/JS prototip)",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test test/game.test.js test/e2e.test.js",
+    "sim": "node test/simulate.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "three": "^0.187.0"
+  }
+}
