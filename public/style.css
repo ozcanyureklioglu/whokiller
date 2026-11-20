@@ -1,0 +1,330 @@
+/* Not: canvas üstündeki panellerde backdrop-filter (blur) yok. 3B sahne her kare değiştiği için
+   tarayıcı bulanıklığı her kare yeniden hesaplar; paneller zaten neredeyse opak olduğundan fark görünmüyordu. */
+:root {
+  --bg: #0b0d12;
+  --panel: rgba(18, 21, 30, .88);
+  --line: rgba(255, 255, 255, .12);
+  --text: #eef0f5;
+  --muted: #98a0b3;
+  --amber: #f5b84b;
+  --killer: #ff6b6b;
+  --police: #5aa9ff;
+  --citizen: #7ddf9b;
+  --radius: 16px;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); overflow: hidden; }
+.hidden { display: none !important; }
+.muted { color: var(--muted); }
+
+#gl {
+  position: fixed; inset: 0; width: 100%; height: 100%; display: block;
+  touch-action: none; outline: none; transition: filter .6s;
+}
+body.spectator #gl { filter: grayscale(.85) brightness(.85); }
+/* Oyunda fareyle tıklamadan bakılır: imleç gizli, nişangâh var. Düğmelerde imleç görünür. */
+body.nocursor { cursor: none; }
+body.nocursor button { cursor: pointer; }
+
+/* ---------- Ekranlar / kartlar ---------- */
+.screen {
+  position: fixed; inset: 0; display: grid; place-items: center; padding: 16px;
+  background: radial-gradient(ellipse at center, rgba(7, 8, 12, .35), rgba(7, 8, 12, .78));
+  overflow: auto;
+}
+.screen.overlay { background: rgba(7, 8, 12, .8); }
+.card {
+  width: min(420px, 100%); background: var(--panel); border: 1px solid var(--line);
+  border-radius: 22px; padding: 26px 24px 22px;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, .55);
+}
+.card.wide { width: min(520px, 100%); }
+h1 { margin: 0 0 6px; font-size: clamp(26px, 6vw, 34px); letter-spacing: -.02em; line-height: 1.1; }
+h1 b { color: var(--amber); }
+h2 { margin: 0 0 6px; font-size: 28px; letter-spacing: -.01em; }
+.tag { margin: 0 0 20px; color: var(--muted); }
+
+.field { display: block; margin: 0 0 12px; }
+.field > span { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+.field b { color: var(--text); }
+input, select {
+  width: 100%; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--line);
+  background: rgba(255, 255, 255, .06); color: var(--text); font: inherit; outline: none;
+}
+input:focus, select:focus { border-color: var(--amber); }
+select option { background: #151821; }
+input[type="range"] { padding: 0; accent-color: var(--amber); }
+
+button {
+  font: inherit; font-weight: 600; color: var(--text); cursor: pointer;
+  padding: 13px 16px; border-radius: 12px; border: 1px solid var(--line);
+  background: rgba(255, 255, 255, .08); transition: transform .08s, background .15s, opacity .15s;
+}
+button:hover:not(:disabled) { background: rgba(255, 255, 255, .15); }
+button:active:not(:disabled) { transform: scale(.98); }
+button:disabled { opacity: .45; cursor: not-allowed; }
+button.primary { background: var(--amber); color: #1a1405; border-color: transparent; }
+button.primary:hover:not(:disabled) { background: #ffc863; }
+button.ghost { background: transparent; }
+#btnQuick { width: 100%; margin-bottom: 12px; padding: 16px; font-size: 17px; }
+#btnQuick small { display: block; font-weight: 500; opacity: .75; font-size: 12px; margin-top: 2px; }
+.split { display: flex; gap: 10px; align-items: stretch; }
+.split > button { flex: 1; }
+.join { flex: 1.4; display: flex; gap: 8px; }
+.join input { text-transform: uppercase; letter-spacing: .15em; text-align: center; min-width: 0; }
+#connState { margin: 14px 0 0; font-size: 13px; text-align: center; }
+.qrows { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 16px; margin-top: 10px; }
+.qrow { display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 13px; }
+.qrow select { width: auto; padding: 5px 10px; border-radius: 8px; font-size: 13px; }
+#stats {
+  position: fixed; left: 8px; bottom: 8px; z-index: 40; pointer-events: none;
+  padding: 4px 8px; border-radius: 6px; background: rgba(0, 0, 0, .7); color: #9fe0a8;
+  font: 12px/1.3 ui-monospace, Consolas, monospace;
+}
+
+.codeRow { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 14px; }
+.codeRow > div { display: flex; flex-direction: column; }
+#roomCode { font-size: 34px; letter-spacing: .18em; color: var(--amber); }
+#plist { list-style: none; margin: 0 0 16px; padding: 0; display: grid; gap: 6px; }
+#plist li {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 14px; border-radius: 10px; background: rgba(255, 255, 255, .06);
+}
+#plist .tagc { font-size: 12px; color: var(--muted); }
+#plist .host { color: var(--amber); }
+#settings { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
+#settings .field:first-child { grid-column: 1 / -1; }
+#roleNote { grid-column: 1 / -1; margin: -4px 0 12px; font-size: 12px; }
+#botNote { margin: 4px 0 14px; font-size: 13px; }
+#timeNote {
+  margin: 2px 0 10px; padding: 9px 12px; border-radius: 10px; font-size: 13px; line-height: 1.4;
+  background: rgba(245, 184, 75, .1); border: 1px solid rgba(245, 184, 75, .4);
+}
+#timeNote:empty { display: none; }
+
+/* Cinsiyet seçimi: iki parçalı düğme */
+.seg { display: flex; gap: 8px; }
+.seg button { flex: 1; padding: 10px 12px; }
+.seg button[aria-checked="true"] { background: rgba(245, 184, 75, .18); border-color: var(--amber); color: var(--amber); }
+.seg.need { animation: need .6s 2; border-radius: 12px; }
+@keyframes need { 50% { box-shadow: 0 0 0 2px var(--killer); } }
+#readyNote { margin: -8px 0 14px; font-size: 13px; }
+#readyNote:empty { display: none; }
+#plist .ready { color: var(--citizen); font-weight: 700; }
+#plist .ready::before { content: "✓ "; }
+#plist .wait { color: var(--muted); }
+#btnStart.isReady { background: rgba(125, 223, 155, .16); color: var(--citizen); border-color: rgba(125, 223, 155, .55); }
+
+/* ---------- Oyun içi arayüz ---------- */
+#hud { position: fixed; inset: 0; pointer-events: none; }
+#roleBadge {
+  position: absolute; top: max(12px, env(safe-area-inset-top)); left: 12px;
+  padding: 8px 14px; border-radius: 12px; background: var(--panel); border: 1px solid var(--line);
+  display: flex; flex-direction: column; gap: 1px;
+}
+#roleBadge span { font-weight: 800; letter-spacing: .08em; font-size: 15px; }
+#roleBadge small { color: var(--muted); font-size: 11px; }
+#roleBadge.killer span { color: var(--killer); }
+#roleBadge.police span { color: var(--police); }
+#roleBadge.citizen span { color: var(--citizen); }
+#roleBadge.hiddenrole span { color: var(--muted); letter-spacing: 0; font-weight: 600; }
+
+#status {
+  position: absolute; top: max(12px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%);
+  display: flex; gap: 10px; font-size: 13px; font-weight: 600;
+}
+#status span {
+  padding: 7px 12px; border-radius: 999px; background: var(--panel); border: 1px solid var(--line);
+}
+#status span:empty { display: none; }
+
+/* Son dakika geri sayımı: durumun altında, ortada */
+#timer {
+  position: absolute; top: calc(max(12px, env(safe-area-inset-top)) + 44px); left: 50%; transform: translateX(-50%);
+  display: flex; flex-direction: column; align-items: center; padding: 6px 18px 7px; border-radius: 14px;
+  background: var(--panel); border: 1px solid rgba(245, 184, 75, .6); text-shadow: 0 1px 6px #000;
+}
+#timer small { font-size: 11px; font-weight: 600; color: var(--muted); letter-spacing: .04em; }
+#timer b { font-size: 26px; line-height: 1.1; color: var(--amber); font-variant-numeric: tabular-nums; }
+#timer.urgent { border-color: rgba(255, 107, 107, .8); animation: pulse .5s infinite alternate; }
+#timer.urgent b { color: var(--killer); }
+
+#feed {
+  position: absolute; top: max(12px, env(safe-area-inset-top)); right: 62px; margin: 0; padding: 0;
+  list-style: none; display: grid; gap: 6px; justify-items: end; max-width: min(320px, 46vw);
+}
+#feed li {
+  padding: 8px 12px; border-radius: 10px; background: var(--panel); border: 1px solid var(--line);
+  font-size: 13px; animation: slideIn .25s ease-out;
+}
+#feed li.bad { border-color: rgba(255, 107, 107, .55); }
+#feed li.good { border-color: rgba(125, 223, 155, .55); }
+@keyframes slideIn { from { opacity: 0; transform: translateX(14px); } }
+
+#crosshair {
+  position: absolute; left: 50%; top: 50%; width: 22px; height: 22px; margin: -11px 0 0 -11px;
+  border-radius: 50%; border: 2px solid rgba(255, 255, 255, .55); transition: all .12s;
+}
+#crosshair i { position: absolute; left: 50%; top: 50%; width: 3px; height: 3px; margin: -1.5px; border-radius: 50%; background: #fff; }
+#crosshair.locked { width: 30px; height: 30px; margin: -15px 0 0 -15px; border-color: var(--amber); }
+
+/* ---------- Odak çerçevesi (yüzün etrafında, her kare transform ile taşınır) ---------- */
+#focusFrame {
+  --c: rgba(255, 255, 255, .7);
+  position: absolute; left: 0; top: 0; width: 80px; height: 80px;
+  opacity: 0; transition: opacity .15s; will-change: transform;
+}
+#focusFrame.on { opacity: 1; }
+#focusFrame i { position: absolute; width: 24%; height: 24%; border: 0 solid var(--c); transition: border-color .15s; }
+#focusFrame i:nth-child(1) { left: 0; top: 0; border-width: 3px 0 0 3px; border-top-left-radius: 10px; }
+#focusFrame i:nth-child(2) { right: 0; top: 0; border-width: 3px 3px 0 0; border-top-right-radius: 10px; }
+#focusFrame i:nth-child(3) { left: 0; bottom: 0; border-width: 0 0 3px 3px; border-bottom-left-radius: 10px; }
+#focusFrame i:nth-child(4) { right: 0; bottom: 0; border-width: 0 3px 3px 0; border-bottom-right-radius: 10px; }
+#focusFrame b {
+  position: absolute; left: 50%; top: calc(100% + 6px); transform: translateX(-50%);
+  padding: 3px 10px; border-radius: 999px; background: rgba(10, 12, 18, .78); border: 1px solid var(--c);
+  color: #fff; font-size: 13px; font-weight: 700; white-space: nowrap;
+}
+#focusFrame.police { --c: var(--police); }
+#focusFrame.contact { --c: var(--amber); }
+#focusFrame.contact i { box-shadow: 0 0 12px rgba(245, 184, 75, .55); }
+#focusFrame.contact b { color: var(--amber); }
+#focusFrame.killer:not(.contact) b { color: var(--muted); font-weight: 600; }
+#focusFrame.mate { --c: rgba(255, 255, 255, .35); }
+#focusFrame.mate b { color: var(--muted); font-weight: 600; }
+#stWatch.warn { border-color: rgba(255, 107, 107, .6); color: #ffb3b3; }
+
+/* ---------- Polisin yakın planı ---------- */
+#closeup {
+  position: absolute; right: 12px; bottom: calc(max(22px, env(safe-area-inset-bottom)) + 4px);
+  width: min(300px, 36vw); aspect-ratio: 4 / 3;
+  border: 2px solid var(--police); border-radius: 12px;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, .6), 0 10px 30px rgba(0, 0, 0, .5);
+}
+#closeup span {
+  position: absolute; left: 8px; top: 8px; padding: 2px 8px; border-radius: 6px;
+  background: rgba(10, 12, 18, .78); color: var(--police); font-size: 12px; font-weight: 700;
+}
+
+#actionBtn {
+  position: absolute; left: 50%; bottom: max(22px, env(safe-area-inset-bottom)); transform: translateX(-50%);
+  pointer-events: auto; min-width: 190px; padding: 15px 22px; font-size: 17px; border-radius: 16px;
+  background: var(--panel); border: 1px solid var(--line); overflow: hidden;
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+}
+#actionBtn em { font-style: normal; font-size: 11px; font-weight: 600; color: var(--muted); padding: 2px 7px; border: 1px solid var(--line); border-radius: 6px; }
+#actionBtn u {
+  position: absolute; left: 0; bottom: 0; height: 4px; width: 100%; background: var(--amber); text-decoration: none;
+  transform: scaleX(0); transform-origin: left;
+}
+#actionBtn.killer:not(:disabled) { border-color: rgba(255, 107, 107, .6); }
+#actionBtn.police:not(:disabled) { border-color: rgba(90, 169, 255, .6); }
+#actionBtn.pulse:not(:disabled) { animation: pulse .7s infinite alternate; border-color: var(--killer); background: rgba(255, 107, 107, .25); }
+#actionBtn.fired { transform: translateX(-50%) scale(.94); }
+@keyframes pulse { to { box-shadow: 0 0 28px rgba(255, 107, 107, .75); } }
+
+#noticed {
+  position: absolute; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: flex-start;
+  padding-top: 18vh; gap: 6px; text-align: center; text-shadow: 0 2px 10px #000;
+  background: radial-gradient(ellipse at center, rgba(255, 60, 60, 0) 35%, rgba(255, 60, 60, .38) 100%);
+  animation: vignette .8s infinite alternate;
+}
+#noticed.on { display: flex; }
+#noticed b { font-size: clamp(22px, 5vw, 34px); color: #ffb3b3; }
+#noticed span { color: #ffd9d9; }
+#noticed u { margin-top: 10px; width: min(260px, 60vw); height: 5px; border-radius: 3px; background: #ff6b6b; transform-origin: left; text-decoration: none; }
+@keyframes vignette { to { opacity: .72; } }
+
+#lookHint {
+  position: absolute; left: 50%; bottom: calc(max(22px, env(safe-area-inset-bottom)) + 78px); transform: translateX(-50%);
+  font-size: 12px; color: rgba(255, 255, 255, .72); text-align: center; text-shadow: 0 1px 6px #000; max-width: 92vw;
+}
+#flash { position: absolute; inset: 0; background: rgba(255, 70, 70, .0); transition: background .5s; }
+#flash.on { background: rgba(255, 70, 70, .35); transition: none; }
+
+/* ---------- Dokunmatik joystick (2B oyunlardaki yön çubuğu gibi) ---------- */
+#joy {
+  position: absolute; left: 50%; top: min(64%, calc(100% - 170px)); width: 120px; height: 120px; margin: -60px 0 0 -60px;
+  border-radius: 50%; border: 2px solid rgba(255, 255, 255, .32);
+  background: radial-gradient(circle, rgba(255, 255, 255, .10), rgba(255, 255, 255, .03) 68%, rgba(0, 0, 0, .15));
+  opacity: 0; transition: opacity .25s; pointer-events: none;
+}
+#joy.on { opacity: .75; }
+#joy.held { opacity: 1; border-color: rgba(245, 184, 75, .7); }
+#joy.on ~ #lookHint { opacity: 0; } /* joystick görünürken altındaki ipucu yazısı üstüne binmesin */
+#joy b { position: absolute; font-size: 11px; line-height: 1; color: rgba(255, 255, 255, .55); }
+#joy b:nth-child(1) { left: 50%; top: 7px; transform: translateX(-50%); }
+#joy b:nth-child(2) { left: 50%; bottom: 7px; transform: translateX(-50%); }
+#joy b:nth-child(3) { top: 50%; left: 8px; transform: translateY(-50%); }
+#joy b:nth-child(4) { top: 50%; right: 8px; transform: translateY(-50%); }
+#joy i {
+  position: absolute; left: 50%; top: 50%; width: 50px; height: 50px; margin: -25px 0 0 -25px; border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, rgba(255, 214, 140, .95), rgba(245, 184, 75, .8));
+  border: 2px solid rgba(255, 255, 255, .7); box-shadow: 0 3px 12px rgba(0, 0, 0, .45); will-change: transform;
+}
+
+/* ---------- Esc menüsü ---------- */
+#menuBtn {
+  position: absolute; top: max(12px, env(safe-area-inset-top)); right: 12px; pointer-events: auto;
+  width: 40px; height: 40px; padding: 0; border-radius: 12px; background: var(--panel);
+  display: flex; align-items: center; justify-content: center; gap: 5px;
+}
+#menuBtn i { width: 4px; height: 14px; border-radius: 2px; background: var(--text); }
+#pause { z-index: 8; }
+#pause .stack { display: grid; gap: 10px; margin: 16px 0 12px; }
+#pause .small { font-size: 12px; margin: 0; line-height: 1.45; }
+button.danger { color: #ffb3b3; border-color: rgba(255, 107, 107, .45); }
+button.danger:hover:not(:disabled) { background: rgba(255, 107, 107, .14); }
+#soloHead h2 { margin: 0 0 4px; }
+#soloHead p { margin: 0 0 16px; }
+
+/* ---------- Rol açılış kartı ---------- */
+#revealCard {
+  position: fixed; inset: 0; display: grid; place-items: center; z-index: 5;
+  background: rgba(5, 6, 9, .9); text-align: center; padding: 20px;
+}
+#revealCard .inner { max-width: 440px; }
+#revealCard h2 { font-size: clamp(44px, 12vw, 72px); letter-spacing: .06em; margin: 0 0 12px; }
+#revealCard h2.killer { color: var(--killer); }
+#revealCard h2.police { color: var(--police); }
+#revealCard h2.citizen { color: var(--citizen); }
+#revealCard p { margin: 0 0 12px; line-height: 1.5; }
+#revealCard .secret { color: var(--amber); font-weight: 700; letter-spacing: .04em; }
+#revealCard .count { height: 5px; background: rgba(255, 255, 255, .12); border-radius: 3px; overflow: hidden; margin-top: 18px; }
+#revealCard .count u { display: block; height: 100%; width: 100%; background: var(--amber); transform-origin: left; text-decoration: none; }
+
+/* ---------- Oyun sonu ---------- */
+.result { font-size: 22px; font-weight: 800; margin: 0 0 4px; }
+.result.win { color: var(--citizen); }
+.result.lose { color: var(--killer); }
+#overRoles { list-style: none; margin: 14px 0 16px; padding: 0; display: grid; gap: 5px; }
+#overRoles li { display: flex; justify-content: space-between; padding: 8px 12px; border-radius: 9px; background: rgba(255, 255, 255, .06); font-size: 14px; }
+#overRoles li.dead span:first-child { text-decoration: line-through; opacity: .6; }
+#overRoles .r-killer { color: var(--killer); font-weight: 700; }
+#overRoles .r-police { color: var(--police); font-weight: 700; }
+#overRoles .r-citizen { color: var(--citizen); }
+#overWait { margin: 12px 0 0; font-size: 13px; text-align: center; }
+
+/* ---------- Bildirimler ---------- */
+#toasts { position: fixed; left: 50%; top: 14%; transform: translateX(-50%); display: grid; gap: 8px; z-index: 20; pointer-events: none; }
+.toast {
+  padding: 10px 16px; border-radius: 12px; background: rgba(20, 23, 33, .94); border: 1px solid var(--line);
+  font-size: 14px; animation: slideIn .2s ease-out; text-align: center; max-width: 86vw;
+}
+.toast.bad { border-color: rgba(255, 107, 107, .7); }
+#fatal {
+  position: fixed; inset: 0; z-index: 30; display: grid; place-items: center; padding: 24px;
+  background: rgba(7, 8, 12, .96); text-align: center; line-height: 1.6;
+}
+#fatal code { background: rgba(255, 255, 255, .1); padding: 2px 8px; border-radius: 6px; }
+
+@media (max-width: 560px) {
+  #closeup { width: 42vw; bottom: calc(max(22px, env(safe-area-inset-bottom)) + 120px); }
+  #feed { max-width: 52vw; }
+  #feed li { font-size: 12px; padding: 6px 10px; }
+  #roleBadge { padding: 6px 10px; }
+  #status { top: auto; bottom: calc(max(22px, env(safe-area-inset-bottom)) + 70px); }
+  #lookHint { display: none; }
+}

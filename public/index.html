@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <meta name="theme-color" content="#0b0d12">
+  <link rel="icon" href="data:,">
+  <title>WhoKiller</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <canvas id="gl"></canvas>
+  <!-- Metinler i18n.js'den gelir: data-i18n="anahtar" (metin), data-i18n-ph="anahtar" (placeholder).
+       Buradaki Türkçe metinler yalnızca JS yüklenene kadar görünür. -->
+
+  <!-- ANA MENÜ -->
+  <main id="home" class="screen">
+    <div class="card">
+      <h1>Who<b>Killer</b></h1>
+      <p class="tag" data-i18n="home.tag">Göz kırpmayı yakala&hellip; ya da fark edip öl.</p>
+      <label class="field"><span data-i18n="home.name">Adın</span>
+        <input id="name" maxlength="14" autocomplete="off" placeholder="Takma adın" data-i18n-ph="home.namePh">
+      </label>
+      <!-- Cinsiyet: karakterin görünüşü (saç, makyaj) buna göre. Seçilmeden oyuna girilmez (main.js → gender) -->
+      <div class="field"><span data-i18n="home.gender">Cinsiyet</span>
+        <div id="gender" class="seg" role="radiogroup">
+          <button type="button" data-g="m" role="radio" aria-checked="false" data-i18n="gender.m">Erkek</button>
+          <button type="button" data-g="f" role="radio" aria-checked="false" data-i18n="gender.f">Kadın</button>
+        </div>
+      </div>
+      <button id="btnQuick" class="primary" disabled><span data-i18n="home.quick">Hızlı oyun</span><small data-i18n="home.quickSub">botlara karşı, tek başına</small></button>
+      <div class="split">
+        <button id="btnCreate" disabled data-i18n="home.create">Oda kur</button>
+        <div class="join">
+          <input id="joinCode" maxlength="5" autocomplete="off" placeholder="KOD" data-i18n-ph="home.codePh">
+          <button id="btnJoin" disabled data-i18n="home.join">Katıl</button>
+        </div>
+      </div>
+      <p id="connState" class="muted" data-i18n="conn.connecting">Sunucuya bağlanıyor&hellip;</p>
+      <div class="qrows">
+        <label class="qrow muted"><span data-i18n="home.lang">Dil</span>
+          <select id="lang"></select>
+        </label>
+        <label class="qrow muted"><span data-i18n="home.quality">Grafik kalitesi</span>
+          <select id="quality">
+            <option value="auto" data-i18n="q.auto">Otomatik</option>
+            <option value="high" data-i18n="q.high">Yüksek</option>
+            <option value="medium" data-i18n="q.medium">Orta</option>
+            <option value="low" data-i18n="q.low">Düşük</option>
+          </select>
+        </label>
+      </div>
+    </div>
+  </main>
+
+  <!-- LOBİ -->
+  <main id="lobby" class="screen hidden">
+    <div class="card wide">
+      <!-- Hızlı oyun (botlara karşı, tek kişilik oda): kod/davet yerine başlık -->
+      <div id="soloHead" class="hidden">
+        <h2 data-i18n="lobby.soloTitle">Hızlı oyun</h2>
+        <p class="muted" data-i18n="lobby.soloSub">Botlara karşı, tek başına. Ayarları seç ve başlat.</p>
+      </div>
+      <div id="codeRow" class="codeRow">
+        <div><span class="muted" data-i18n="lobby.code">Oda kodu</span><b id="roomCode">-----</b></div>
+        <button id="btnCopy" class="ghost" data-i18n="lobby.copy">Davet linkini kopyala</button>
+      </div>
+      <ul id="plist"></ul>
+      <div id="settings">
+        <label class="field"><span><span data-i18n="lobby.total">Toplam oyuncu:</span> <b id="totalVal">6</b></span>
+          <input id="total" type="range" min="4" max="10" value="6">
+        </label>
+        <label class="field"><span data-i18n="lobby.killers">Katil sayısı</span>
+          <select id="killers"><option value="1">1</option></select>
+        </label>
+        <label class="field"><span data-i18n="lobby.police">Polis sayısı</span>
+          <select id="policeCount"><option value="1">1</option></select>
+        </label>
+        <p id="roleNote" class="muted"></p>
+        <label class="field"><span data-i18n="lobby.signal">İşaret</span>
+          <select id="signal">
+            <option value="wink" data-i18n="signal.wink">Göz kırpma</option>
+            <option value="tongue" data-i18n="signal.tongue">Dil çıkarma</option>
+            <option value="brow" data-i18n="signal.brow">Kaş kaldırma</option>
+          </select>
+        </label>
+        <label class="field"><span data-i18n="lobby.difficulty">Bot becerisi</span>
+          <select id="difficulty">
+            <option value="easy" data-i18n="diff.easy">Kolay</option>
+            <option value="normal" selected data-i18n="diff.normal">Normal</option>
+            <option value="hard" data-i18n="diff.hard">Zor</option>
+          </select>
+        </label>
+        <label class="field"><span data-i18n="lobby.lives">Polisin hakkı</span>
+          <select id="lives">
+            <option value="1">1</option>
+            <option value="2" selected>2</option>
+            <option value="3">3</option>
+          </select>
+        </label>
+      </div>
+      <!-- Katilin süresi (sunucunun ayarından): süre dolarsa katil kaybeder, son dakikada geri sayım -->
+      <p id="timeNote"></p>
+      <p id="botNote" class="muted"></p>
+      <p id="readyNote" class="muted"></p>
+      <div class="split">
+        <button id="btnStart" class="primary" data-i18n="lobby.start">Başlat</button>
+        <button id="btnLeave" class="ghost" data-i18n="lobby.leave">Odadan çık</button>
+      </div>
+    </div>
+  </main>
+
+  <!-- OYUN İÇİ ARAYÜZ -->
+  <div id="hud" class="hidden">
+    <div id="roleBadge"><span id="roleTag"></span><small id="roleSub"></small></div>
+    <div id="status"><span id="stAlive"></span><span id="stLives"></span><span id="stWatch"></span></div>
+    <!-- Katilin süresinin son dakikası: geri sayım (sunucu "countdown" gönderince görünür) -->
+    <div id="timer" class="hidden"><small data-i18n="timer.label">Katilin süresi</small><b id="timerVal">1:00</b></div>
+    <ul id="feed"></ul>
+    <div id="crosshair"><i></i></div>
+    <!-- Odak çerçevesi: odaktaki yüzün etrafında köşeli çerçeve + isim / göz teması durumu -->
+    <div id="focusFrame"><i></i><i></i><i></i><i></i><b id="focusLabel"></b></div>
+    <!-- Polisin yakın planı: içi WebGL ile aynı canvas'a çizilir, bu yalnızca çerçeve ve başlık -->
+    <div id="closeup" class="hidden"><span id="closeupName"></span></div>
+    <div id="noticed"><b data-i18n="noticed.title">Biri sana işaret yaptı!</b><span data-i18n="noticed.sub">Fark ettin: &ldquo;Ben öldüm!&rdquo; de.</span><u id="noticedBar"></u></div>
+    <!-- Dokunmatik joystick: ekrana dokununca ortanın biraz altında belirir (main.js → joy) -->
+    <div id="joy"><b>▲</b><b>▼</b><b>◀</b><b>▶</b><i></i></div>
+    <div id="lookHint"></div>
+    <button id="menuBtn" aria-label="Menu (Esc)" title="Esc"><i></i><i></i></button>
+    <button id="actionBtn" disabled><span id="actionLabel"></span><em id="actionKey" data-i18n="act.key">Boşluk</em><u id="cdFill"></u></button>
+    <div id="flash"></div>
+  </div>
+
+  <!-- ROL AÇILIŞ KARTI -->
+  <div id="revealCard" class="hidden">
+    <div class="inner">
+      <p class="muted" data-i18n="reveal.your">Rolün</p>
+      <h2 id="revealRole"></h2>
+      <p id="revealDesc"></p>
+      <p class="secret" data-i18n="reveal.secret">Kimseye söyleme!</p>
+      <div class="count"><u id="revealBar"></u></div>
+    </div>
+  </div>
+
+  <!-- ESC MENÜSÜ: tek kişilik oyunda oyun durur; çok oyunculuda oyun sürer -->
+  <section id="pause" class="screen overlay hidden">
+    <div class="card">
+      <h2 id="pauseTitle">Menü</h2>
+      <p id="pauseNote" class="muted"></p>
+      <div class="stack">
+        <button id="btnResume" class="primary" data-i18n="pause.resume">Devam et</button>
+        <button id="btnQuit" class="ghost danger" data-i18n="pause.quit">Oyundan çık</button>
+      </div>
+      <p class="muted small" data-i18n="pause.quitNote">Çıkarsan herkese bildirilir.</p>
+    </div>
+  </section>
+
+  <!-- OYUN SONU -->
+  <section id="over" class="screen overlay hidden">
+    <div class="card">
+      <h2 id="overTitle"></h2>
+      <p id="overResult" class="result"></p>
+      <p id="overSub" class="muted"></p>
+      <ul id="overRoles"></ul>
+      <div class="split">
+        <button id="btnAgain" class="primary" data-i18n="over.again">Lobiye dön</button>
+        <button id="btnHome" class="ghost" data-i18n="over.home">Ana menü</button>
+      </div>
+      <p id="overWait" class="muted"></p>
+    </div>
+  </section>
+
+  <div id="fatal" class="hidden"></div>
+  <div id="toasts"></div>
+
+  <script type="module" src="main.js"></script>
+</body>
+</html>
