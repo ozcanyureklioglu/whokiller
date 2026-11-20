@@ -1,14 +1,14 @@
 // main.js — ağ, arayüz, girdi (fare / dokunmatik / klavye) ve oyun döngüsü.
 import { loadThree, World } from './scene.js';
 import { t, LANGS, detectLang, getLang, setLang, applyStatic } from './i18n.js';
-import { arcLayout, GazeMap } from './layout.js';
+import { tableLayout, GazeMap } from './layout.js';
 
 const $ = (s) => document.querySelector(s);
 const TAU = Math.PI * 2;
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 const wrapPi = (a) => { a = (a + Math.PI) % TAU; if (a < 0) a += TAU; return a - Math.PI; };
 
-const MAX_REL_YAW = 1.2; // kavisli masada en uçtakiler ~45–50°'de: en fazla ~70° sağa/sola dönülür
+const MAX_REL_YAW = 1.2; // yuvarlak masada yan komşular ~46–52°'de: en fazla ~70° sağa/sola dönülür
 const touchDevice = matchMedia('(pointer: coarse)').matches;
 const params = new URLSearchParams(location.search);
 const QUALITY_KEYS = ['auto', 'high', 'medium', 'low'];
@@ -342,11 +342,11 @@ function onStart(m) {
   S.gaze.clear();
   el.timer.classList.add('hidden');
   const me = g.byId.get(m.you);
-  // Ekrandaki düzen: kavisli masa — ben yelpazenin ucundayım, diğerleri yay boyunca bana dönük oturur
+  // Ekrandaki düzen: yuvarlak masa — herkes çemberde, masanın ortasına dönük; yan komşularım uzakta oturur
   // (bkz. layout.js). Kurallar sunucudaki yuvarlak düzende; bakışlar iki düzen arasında eşlenir.
   const canon = [];
   for (const q of m.seats) canon[q.seat] = q.pos;
-  const L = arcLayout(m.seats.length, me.seat);
+  const L = tableLayout(m.seats.length, me.seat);
   g.view = {
     seats: m.seats.map((q) => ({ ...q, pos: L.pos[q.seat], face: L.face[q.seat] })),
     table: L.table,
@@ -437,7 +437,7 @@ function onGaze(m) {
     if (id === S.id) continue;
     S.gaze.set(id, [yaw, pitch]); // göz teması hesabı için (kanonik düzende; 3B motor yüklenmemiş olsa da)
     const q = g.byId.get(id);
-    if (q) S.world?.setGaze(id, g.view.map.toView(q.seat, yaw), pitch); // kavisli masadaki karşılığı
+    if (q) S.world?.setGaze(id, g.view.map.toView(q.seat, yaw), pitch); // ekrandaki masadaki karşılığı
   }
 }
 

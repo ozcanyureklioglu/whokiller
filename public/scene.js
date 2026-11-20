@@ -1,6 +1,6 @@
 // scene.js — Three.js ile 3B oda, masa, karakterler ve işaret animasyonları.
 // Dış bağımlılık: yalnızca three (yerelden ya da CDN'den yüklenir).
-// Masa kavislidir: izleyici yelpazenin ucunda, diğerleri yay boyunca ona dönük oturur (bkz. layout.js).
+// Masa yuvarlaktır: herkes çemberde, masanın ortasına dönük oturur; izleyicinin yan komşuları uzakta (bkz. layout.js).
 //
 // Performans notları:
 //  - Karakterin sabit parçaları (sandalye, kollar, eller, kafa, saç...) tek geometride birleştirilir;
@@ -11,7 +11,7 @@
 //  - Kalite ön ayarları (high / medium / low) ve "otomatik" mod: FPS düşerse önce gölgeyi kapatır,
 //    sonra çözünürlüğü düşürür; düşürmek işe yaramıyorsa geri alır ve durur.
 
-import { arcLayout } from './layout.js';
+import { tableLayout } from './layout.js';
 
 const TAU = Math.PI * 2;
 const wrapPi = (a) => { a = (a + Math.PI) % TAU; if (a < 0) a += TAU; return a - Math.PI; };
@@ -190,7 +190,7 @@ class Avatar {
 
     const x = info.pos[0];
     const z = info.pos[2];
-    // Gövdenin döndüğü nokta: kavisli düzende herkes izleyiciye döner (bkz. layout.js), yoksa masanın merkezi.
+    // Gövdenin döndüğü nokta: masanın ortası (bkz. layout.js).
     const [fx, fz] = info.face || [0, 0];
     this.fwdYaw = Math.atan2(fz - z, fx - x);
     const rnd = rngFrom(hashStr(info.id + info.name));
@@ -504,6 +504,14 @@ class Avatar {
     let pit = clamp(this.curPitch, -0.7, 0.6);
     if (!this.alive) { rel = 0; pit = -0.85; } // ölenin başı öne düşer
     const yaw = this.fwdYaw + rel;
+    // Göz kırpma, izleyiciye yakın olan gözle oynatılır: karakter yana dönükken (profilden) de kırpma görünür.
+    // (Hangi gözün kırpıldığının oyunda anlamı yok; hedefe tam dönükse sunucunun seçtiği göz kalır.)
+    if (this.sig && this.sig.kind === 'wink' && !this.sig.sideSet && viewerPos && !this.faceViewer) {
+      this.sig.sideSet = true;
+      // Kafanın sağ ekseni (yerel +X) dünyada (sin yaw, 0, −cos yaw); izleyici o yandaysa +1 gözü yakındır.
+      const right = Math.sin(yaw) * (viewerPos[0] - this.tmpPos.x) - Math.cos(yaw) * (viewerPos[2] - this.tmpPos.z);
+      if (Math.abs(right) > 1e-4) this.sig.side = right > 0 ? 1 : -1;
+    }
     const cp = Math.cos(pit);
     this.tmpDir.set(cp * Math.cos(yaw), Math.sin(pit), cp * Math.sin(yaw));
     this.tmpPos.add(this.tmpDir);
@@ -1067,9 +1075,8 @@ export class World {
 
   /**
    * Masayı ve karakterleri kurar. seats[i].face = [x, z]: gövdenin döndüğü nokta.
-   * table: kavisli masa { cx, c, ri, ro, phi, near, mid } (bkz. layout.js arcLayout) — izleyici (cx, 0)'da;
-   * uzak kenar, merkezi izleyicinin c önünde olan ro yarıçaplı yay (±phi); yakın kenar izleyicinin
-   * çevresinde ri yarıçaplı küçük yay (±near). Arası düz kenarlarla birleşir: yuvarlak hatlı bir masa.
+   * table: yuvarlak masa { r, seat } (bkz. layout.js tableLayout) — masa sahnenin merkezinde, r yarıçaplı;
+   * herkes seat yarıçaplı çemberin üstünde oturur.
    */
   loadSeats(seats, youId, table) {
     const T = this.T;
@@ -1079,63 +1086,46 @@ export class World {
     this.focusFx.mesh.visible = false;
     Object.assign(this.lockFx, { id: null, target: 0, strength: 0 });
     this.closeId = null;
-    const { cx, c, ri, ro, phi, near } = table;
+    const { r: tr, seat: sr } = table;
 
-    // Şekil izleyiciye göre XY'de çizilir, XZ düzlemine yatırılır (kalınlık +Y) ve izleyicinin yerine taşınır.
-    // inset: alt kasa için içeri çekilmiş aynı biçim.
-    const shape = (inset, depth, y) => {
-      const r0 = ri + inset;
-      const r1 = ro - inset;
-      const p1 = phi - inset * 0.5;
-      const n0 = near - inset * 0.5;
-      // Yan kenarlar düz değil, dışa doğru kavisli: uzak kenarın yayına kesintisiz bağlanır (masa dilim
-      // gibi değil, yuvarlak görünür). Kontrol noktası, yayın ucundaki teğet üzerinde geriye doğru.
-      const nx = r0 * Math.cos(n0);
-      const ny = r0 * Math.sin(n0);
-      const ex = c + r1 * Math.cos(p1);
-      const ey = r1 * Math.sin(p1);
-      const lam = 0.42 * Math.hypot(ex - nx, ey - ny);
+    // Yuvarlak tabla: daire XY'de çizilir, XZ düzlemine yatırılır (kalınlık +Y).
+    const disk = (radius, depth, y) => {
       const s = new T.Shape();
-      s.moveTo(nx, -ny);
-      s.quadraticCurveTo(ex - lam * Math.sin(p1), -ey - lam * Math.cos(p1), ex, -ey);
-      s.absarc(c, 0, r1, -p1, p1, false);
-      s.quadraticCurveTo(ex - lam * Math.sin(p1), ey + lam * Math.cos(p1), nx, ny);
-      s.absarc(0, 0, r0, n0, -n0, true);
-      const geo = new T.ExtrudeGeometry(s, { depth, bevelEnabled: false, curveSegments: 72 });
+      s.absarc(0, 0, radius, 0, TAU, false);
+      const geo = new T.ExtrudeGeometry(s, { depth, bevelEnabled: false, curveSegments: 96 });
       const uv = geo.attributes.uv; // UV'ler metre cinsinden: ahşap dokusu çok sık tekrarlanmasın
       for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * 0.3, uv.getY(i) * 0.3);
       geo.rotateX(-Math.PI / 2);
-      geo.translate(cx, y, 0);
+      geo.translate(0, y, 0);
       return geo;
     };
-    const top = new T.Mesh(shape(0, 0.07, 0.71), this.mat({ map: this.tex.wood, roughness: 0.55 }));
+    const top = new T.Mesh(disk(tr, 0.07, 0.71), this.mat({ map: this.tex.wood, roughness: 0.55 }));
     top.castShadow = true; top.receiveShadow = true;
     this.dynamic.add(top);
-    const apron = new T.Mesh(shape(0.12, 0.14, 0.57), this.matRough({ color: 0x2b1c11 }));
+    const apron = new T.Mesh(disk(tr - 0.12, 0.14, 0.57), this.matRough({ color: 0x2b1c11 }));
     this.dynamic.add(apron);
-    // Ayaklar: kavisin iki yanında ve ortada (uzak kenarın merkezine göre)
-    const legAt = [[ro * 0.6, -phi * 0.55], [ro * 0.6, phi * 0.55], [ro * 0.15, 0]];
-    const legs = legAt.map(([r, a]) => (
-      { geo: new T.CylinderGeometry(0.13, 0.24, 0.57, 16), m: xf(T, [cx + c + r * Math.cos(a), 0.285, r * Math.sin(a)]) }));
+    // Ayaklar: ortada kalın bir gövde + dört yanda ayak (büyük masa sarkmasın)
+    const legs = [{ geo: new T.CylinderGeometry(0.2, 0.3, 0.57, 16), m: xf(T, [0, 0.285, 0]) }];
+    for (let i = 0; i < 4; i++) {
+      const a = Math.PI / 4 + (i * Math.PI) / 2;
+      legs.push({ geo: new T.CylinderGeometry(0.1, 0.16, 0.57, 12), m: xf(T, [tr * 0.62 * Math.cos(a), 0.285, tr * 0.62 * Math.sin(a)]) });
+    }
     const leg = new T.Mesh(mergeParts(T, legs), this.matRough({ color: 0x2b1c11 }));
     leg.castShadow = true;
     this.dynamic.add(leg);
-    // Halı: herkesin altında kalan elips (izleyiciden en uzaktakine kadar)
-    const far = c + ro + 0.72;
-    const rug = new T.Mesh(new T.CircleGeometry(1, 72), this.matRough({ map: this.tex.rug }));
-    rug.scale.set(far / 2 + 1.1, (ro + 0.72) * Math.sin(Math.min(phi, Math.PI / 2)) + 1.1, 1);
+    // Halı: masanın ortasında, sandalyelerin de altında kalan daire
+    const rug = new T.Mesh(new T.CircleGeometry(sr + 1.1, 96), this.matRough({ map: this.tex.rug }));
     rug.rotation.x = -Math.PI / 2;
-    rug.position.set(cx + far / 2, 0.012, 0);
+    rug.position.set(0, 0.012, 0);
     rug.receiveShadow = true;
     this.dynamic.add(rug);
 
     // Masanın ortasında birkaç kart (tek mesh)
-    const mid = 0; // masanın ortası sahnenin merkezidir (bkz. arcLayout)
     const cards = [];
     for (let i = 0; i < 4; i++) {
       cards.push({
         geo: new T.BoxGeometry(0.1, 0.004, 0.15),
-        m: xf(T, [mid + Math.cos(i * 1.7) * 0.22, 0.784 + i * 0.004, Math.sin(i * 1.7) * 0.22], [0, i * 1.1, 0]),
+        m: xf(T, [Math.cos(i * 1.7) * 0.22, 0.784 + i * 0.004, Math.sin(i * 1.7) * 0.22], [0, i * 1.1, 0]),
       });
     }
     const cardMesh = new T.Mesh(mergeParts(T, cards), this.matRough({ color: 0xf2ecdc }));
@@ -1157,7 +1147,7 @@ export class World {
     this.viewer = null;
     if (on) {
       const names = ['Ayşe', 'Mehmet', 'Zeynep', 'Can', 'Elif', 'Burak'];
-      const L = arcLayout(names.length, 0);
+      const L = tableLayout(names.length, 0);
       const seats = names.map((name, i) => ({
         id: `demo${i}`, name, gender: i % 2 ? 'm' : 'f', pos: L.pos[i], face: L.face[i],
       }));

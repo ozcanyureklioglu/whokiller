@@ -1,19 +1,17 @@
 // layout.js — masanın ekrandaki düzeni (yalnızca istemci; DOM/Three bilmez, Node testlerinde de çalışır).
 //
-// Sunucu oyunu YUVARLAK masada hesaplar (kanonik düzen): bakış açıları, kimin kime baktığı, nişan toleransı.
-// Yuvarlak masada yan komşular yanda kalır ve bedenleri masanın ortasına döndüğü için yandan görünür;
-// onlara bakmak için de çok dönmek gerekir.
+// Sunucu oyunu düzgün bir yuvarlak masada hesaplar (kanonik düzen): bakış açıları, kimin kime baktığı,
+// nişan toleransı. O düzende izleyicinin yan komşuları çok yakında ve tam yanda (60–72°) oturur.
 //
-// Bu yüzden her istemci kendi ekranında masayı KAVİSLİ kurar: oyuncu masanın bir ucunda oturur, diğerleri
-// karşısındaki bir yay boyunca YÜZLERİ ONA DÖNÜK oturur (aralarında en az ARC.spacing metre). Herkes
-// karşıdadır ve önden görünür; yayın uçları bile ±42–46° içinde kalır (16:9 ekrana sığar). Yay üzerinde
-// komşular birbirine yandan bakar; bunu doğal göstermek için karakter yana bakarken omuzları da döner
-// (scene.js, Avatar.update).
-// ARC.k > 0 yayın merkezini izleyicinin önüne alır: masa yelpaze yerine daha yuvarlak görünür (uçtakiler
-// izleyiciye biraz daha yakın, ortadakiler biraz daha uzak oturur). k = 1 tam yuvarlak masa olurdu.
+// Her istemci kendi ekranında masayı yine ÇEMBER biçiminde kurar: herkes (izleyici dahil) bir çemberin üstünde,
+// gövdesi masanın ortasına dönük oturur. Tek fark, izleyicinin iki yanında boşluk bırakılmasıdır: yan
+// komşular izleyiciden en az RING.nearMin metre uzakta ve ±46–52°'de oturur (rahat görülür, çok dönmek
+// gerekmez); diğerleri çemberin geri kalanına, aralarında en az RING.spacing metre olacak şekilde dizilir.
+// Çemberde karşılıklı oturanlar birbirine bakarken yüzleri izleyiciye de dönüktür: "sıra halinde, herkes
+// karşıda" düzenine göre göz kırpma çok daha sık önden / yarı yandan görünür.
 //
 // Bakışlar iki düzen arasında "koltuk koltuk" eşlenir: kanonik düzende X'in tam yüzüne bakan kişi,
-// kavisli düzende de X'in tam yüzüne bakar; iki komşu arasının neresine bakıyorsa burada da oraya bakar.
+// ekrandaki düzende de X'in tam yüzüne bakar; iki komşu arasının neresine bakıyorsa burada da oraya bakar.
 // Böylece sunucunun kuralları değişmez, her oyuncu kendi ekranında doğru kişiyi doğru yöne bakarken görür.
 
 const TAU = Math.PI * 2;
@@ -21,65 +19,45 @@ const DEG = Math.PI / 180;
 const wrapPi = (a) => { a = (a + Math.PI) % TAU; if (a < 0) a += TAU; return a - Math.PI; };
 
 /**
- * Kavisli düzenin ölçüleri.
- * k: yay merkezinin izleyicinin önündeki uzaklığı / yay yarıçapı — büyüdükçe masa daha yuvarlak (0: izleyici merkezde)
- * view: yayın uçlarının izleyiciden görünme açısı (4 kişide 42°, 10 kişide 46°: yakındakiler daha iri, payla ekrana sığsın)
- * spacing: yan yana oturanların arası en az (m)
- * endMin: uçtakilerin izleyiciye en küçük uzaklığı (m; küçük masada çok yakın olup ekranı kaplamasınlar)
- * edge: oturanların önündeki masa kenarına uzaklık (m) · near: izleyicinin önündeki masa ucunun uzaklığı (m)
+ * Çember düzeninin ölçüleri.
+ * side: izleyicinin yan komşularının görünme açısı (°; 4 kişide 46°, 10 kişide 52° — kalabalıkta çember
+ *       daha çok dolsun, masa gereğinden büyümesin)
+ * spacing: yan yana oturanların arası en az (m) · nearMin: yan komşuların izleyiciye en az uzaklığı (m)
+ * edge: oturanların göz hizasından masa kenarına yatay uzaklık (m)
  */
-export const ARC = { k: 0.45, view: [42, 46], nMin: 4, nMax: 10, spacing: 1.4, endMin: 2.8, edge: 0.72, near: 0.45 };
+export const RING = { side: [46, 52], nMin: 4, nMax: 10, spacing: 1.4, nearMin: 2.8, edge: 0.72 };
 
-/** Yayın merkezden görünen yarı açısı psi: uçlar izleyiciden tam viewDeg açısında görünsün. */
-function arcHalfAngle(viewDeg) {
-  const target = viewDeg * DEG;
-  let lo = 0;
-  let hi = Math.PI * 0.95;
-  for (let i = 0; i < 50; i++) {
-    const m = (lo + hi) / 2;
-    if (Math.atan2(Math.sin(m), ARC.k + Math.cos(m)) < target) lo = m; else hi = m;
-  }
-  return (lo + hi) / 2;
-}
-
-/** n kişilik masada yay: yarıçap r, merkezin izleyiciden uzaklığı c, yarı açı psi. */
-export function arcDims(n) {
-  const f = Math.min(1, Math.max(0, (n - ARC.nMin) / (ARC.nMax - ARC.nMin)));
-  const psi = arcHalfAngle(ARC.view[0] + (ARC.view[1] - ARC.view[0]) * f);
-  const endF = Math.hypot(ARC.k + Math.cos(psi), Math.sin(psi)); // uçtakinin uzaklığı / r
-  const step = (2 * psi) / Math.max(1, n - 2); // komşular arası açı (yay merkezinden)
-  // Komşuların arası (düz mesafe, kiriş) en az ARC.spacing olsun.
-  const r = Math.max(ARC.endMin / endF, ARC.spacing / (2 * Math.sin(step / 2)));
-  return { r, c: ARC.k * r, psi };
+/** n kişilik masada çember: yarıçap r, izleyici–yan komşu arası merkez açısı gap, diğerlerinin arası step. */
+export function ringDims(n) {
+  const f = Math.min(1, Math.max(0, (n - RING.nMin) / (RING.nMax - RING.nMin)));
+  const side = (RING.side[0] + (RING.side[1] - RING.side[0]) * f) * DEG;
+  const gap = Math.PI - 2 * side; // çemberde: merkez açısı gap olan komşu, izleyiciden (90° − gap/2) yanda görünür
+  const step = (TAU - 2 * gap) / Math.max(1, n - 2);
+  // Yan komşu en az nearMin uzakta, yan yana oturanların arası (kiriş) en az spacing olsun.
+  const r = Math.max(RING.nearMin / (2 * Math.sin(gap / 2)), RING.spacing / (2 * Math.sin(step / 2)));
+  return { r, gap, step };
 }
 
 /**
- * Kavisli düzen. you: izleyicinin koltuk numarası. Döner:
- *  pos[seat]  = [x, y, z] göz konumu · face[seat] = [x, z] gövdenin döndüğü nokta
- *  table      = { cx, c, ri, ro, phi, near, mid } masa: izleyici (cx, 0)'da; uzak kenar merkezi (cx + c, 0) olan
- *               ro yarıçaplı yay (±phi), yakın kenar izleyicinin çevresinde ri yarıçaplı yay (±near);
- *               mid: izleyiciden masanın ortasına uzaklık
- * İzleyici +X'e bakar; sahnenin merkezi (0, 0) masanın ortasına düşer (lamba onun üstünde).
- * Diğerleri kanonik düzendeki sırayla (açı artan yönde) yay boyunca eşit aralıklı dizilir.
+ * Çember düzeni. you: izleyicinin koltuk numarası. Döner:
+ *  pos[seat]  = [x, y, z] göz konumu · face[seat] = [x, z] gövdenin döndüğü nokta (masanın ortası)
+ *  table      = { r, seat }: masa yarıçapı ve oturanların çemberinin yarıçapı
+ * Masanın ortası sahnenin merkezidir (0, 0) (lamba onun üstünde); izleyici (-seat, 0)'da, +X'e bakar.
+ * Diğerleri kanonik düzendeki sırayla (açı artan yönde) çember boyunca dizilir.
  */
-export function arcLayout(n, you, y = 1.22) {
-  const { r, c, psi } = arcDims(n);
-  const ro = r - ARC.edge;
-  const mid = (c + ro) / 2;
-  const cx = -mid;
+export function tableLayout(n, you, y = 1.22) {
+  const { r, gap, step } = ringDims(n);
   const pos = new Array(n);
   const face = new Array(n);
-  pos[you] = [cx, y, 0];
+  pos[you] = [-r, y, 0];
   face[you] = [0, 0];
   for (let k = 1; k < n; k++) {
-    const a = n > 2 ? -psi + ((k - 1) * 2 * psi) / (n - 2) : 0;
+    const a = Math.PI + gap + (k - 1) * step;
     const seat = (you + k) % n;
-    pos[seat] = [cx + c + r * Math.cos(a), y, r * Math.sin(a)];
-    face[seat] = [cx, 0]; // herkes izleyiciye döner: önden görünür
+    pos[seat] = [r * Math.cos(a), y, r * Math.sin(a)];
+    face[seat] = [0, 0]; // herkes masanın ortasına döner (gerçek yuvarlak masa gibi)
   }
-  // Uçtakilerin önünde de masa olsun: açıya yarım koltuk ekle.
-  const phi = Math.min(Math.PI * 0.6, psi + Math.asin(Math.min(1, (ARC.spacing / 2) / ro)));
-  return { pos, face, table: { cx, c, ri: ARC.near, ro, phi, near: 55 * DEG, mid } };
+  return { pos, face, table: { r: r - RING.edge, seat: r } };
 }
 
 /**

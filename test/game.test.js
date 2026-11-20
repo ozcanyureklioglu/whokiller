@@ -457,8 +457,8 @@ test('çeviriler: her dil tam; sunucunun her hata kodunun çevirisi var', async 
   for (const c of codes) assert.ok(DICT.tr[`err.${c}`], `err.${c} çevirisi yok`);
 });
 
-test('kavisli masa: herkes karşıda ve izleyiciye dönük; bakışlar sunucunun yuvarlak düzeniyle koltuk koltuk eşlenir', async () => {
-  const { arcLayout, GazeMap, ARC } = await import('../public/layout.js');
+test('yuvarlak masa: herkes çemberde ve ortaya dönük; yan komşular uzakta; bakışlar sunucunun düzeniyle koltuk koltuk eşlenir', async () => {
+  const { tableLayout, GazeMap, RING } = await import('../public/layout.js');
   const yawTo = (a, b) => Math.atan2(b[2] - a[2], b[0] - a[0]);
   const diff = (a, b) => Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b)));
   for (const n of [4, 6, 8, 10]) {
@@ -466,30 +466,30 @@ test('kavisli masa: herkes karşıda ve izleyiciye dönük; bakışlar sunucunun
     const canon = [];
     for (const p of g.players) canon[p.seat] = p.pos; // sunucunun gönderdiği konumlar
     for (const you of [0, n - 1]) {
-      const L = arcLayout(n, you);
+      const L = tableLayout(n, you);
       const view = L.pos;
-      assert.ok(view[you][0] < 0 && Math.abs(view[you][2]) < 1e-9, 'izleyici yelpazenin ucunda');
+      assert.ok(view[you][0] < 0 && Math.abs(view[you][2]) < 1e-9, 'izleyici masanın bir yanında, ortaya (+X) bakar');
+      // Herkes (izleyici dahil) masanın ortasındaki aynı çemberde oturur, gövdesi masanın ortasına dönük
+      const rad = view.map((p) => Math.hypot(p[0], p[2]));
+      assert.ok(Math.max(...rad) - Math.min(...rad) < 1e-9, 'herkes aynı çemberde');
+      assert.ok(Math.abs(rad[0] - L.table.seat) < 1e-9);
+      assert.ok(L.table.r > 0.5 && L.table.r < L.table.seat, 'masa oturanların içinde');
+      for (const f of L.face) assert.deepEqual(f, [0, 0]);
       const dists = [];
       for (let j = 0; j < n; j++) {
         if (j === you) continue;
-        assert.ok(diff(yawTo(view[you], view[j]), 0) <= (ARC.view[1] + 0.01) * (Math.PI / 180), `n=${n}: koltuk ${j} karşıda değil`);
-        // Gövdesi izleyiciye dönük (yandan görünmez)
-        assert.deepEqual(L.face[j], [view[you][0], view[you][2]]);
+        assert.ok(diff(yawTo(view[you], view[j]), 0) <= (RING.side[1] + 0.01) * (Math.PI / 180), `n=${n}: koltuk ${j} çok yanda`);
         dists.push(Math.hypot(view[j][0] - view[you][0], view[j][2] - view[you][2]));
       }
-      // Diğerleri, merkezi izleyicinin önünde olan bir yay üzerinde (yuvarlak masa); düzen simetrik ve
-      // yuvarlak olduğu için ortadakiler uçtakilerden uzakta değil, en fazla aynı uzaklıkta
-      const ctr = [L.table.cx + L.table.c, 0];
-      const rad = [...Array(n).keys()].filter((j) => j !== you).map((j) => Math.hypot(view[j][0] - ctr[0], view[j][2] - ctr[1]));
-      assert.ok(Math.max(...rad) - Math.min(...rad) < 1e-9, 'yay üzerinde');
       for (let k = 0; k < dists.length; k++) assert.ok(Math.abs(dists[k] - dists[dists.length - 1 - k]) < 1e-9, 'simetrik');
-      assert.ok(dists[0] <= dists[Math.floor(dists.length / 2)] + 1e-9, 'uçtakiler ortadakilerden uzak olmamalı');
+      // Yan komşular izleyiciye en yakın olanlar ama en az nearMin uzakta (düzgün yuvarlak masadaki gibi dibinde değil)
+      assert.ok(Math.abs(dists[0] - Math.min(...dists)) < 1e-9);
+      assert.ok(Math.min(...dists) >= RING.nearMin - 0.01, `n=${n}: yan komşular çok yakın`);
       for (let k = 1; k < n - 1; k++) {
         const p = view[(you + k) % n];
         const q = view[(you + k + 1) % n];
-        assert.ok(Math.hypot(p[0] - q[0], p[2] - q[2]) >= ARC.spacing - 0.01, `n=${n}: yan yana oturanlar çok yakın`);
+        assert.ok(Math.hypot(p[0] - q[0], p[2] - q[2]) >= RING.spacing - 0.01, `n=${n}: yan yana oturanlar çok yakın`);
       }
-      assert.ok(Math.min(...dists) >= 2.79, 'kimse izleyiciye çok yakın değil');
       const gm = new GazeMap(canon, view);
       for (let i = 0; i < n; i++) {
         for (let j = 0; j < n; j++) {

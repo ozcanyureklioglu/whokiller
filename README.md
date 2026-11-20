@@ -1,7 +1,7 @@
 # WhoKiller — HTML/JS prototipi
 
 Göz kırpma tabanlı sosyal çıkarım oyunu. Katil ve polis sayısı lobide seçilir (her 4 oyuncuya en fazla 1'er), kalanı vatandaş. Eksik oyuncular botlarla tamamlanır. Arayüz Türkçe ve İngilizce (ana menüde **Dil**).
-Sahne 3B: herkes kavisli bir masada oturur, fareyle etrafına bakar; kimin ne olduğunu kimse bilmez.
+Sahne 3B: herkes yuvarlak bir masada oturur, fareyle etrafına bakar; kimin ne olduğunu kimse bilmez.
 
 ## Çalıştırma
 
@@ -46,15 +46,17 @@ Birden fazlaysa:
 
 Denge (bot-bot, normal zorluk, 10 kişi, polis kazanma oranı): 1+1 %57 · 1+2 %73 · 2+2 %37 · 2+1 %23. İki katil belirgin şekilde güçlüdür: öldürmeyi paylaştıkları için polis her birinin işaretini daha az görür ve ikisini de yakalamak zorundadır.
 
-### Kavisli masa: herkes karşında ve sana dönük
+### Yuvarlak masa: herkes çemberde, yan komşular uzakta
 
-Her oyuncu kendi ekranında masayı **kavisli** görür: kendisi masanın bir ucunda oturur, diğerleri karşısındaki bir **yay** boyunca, **gövdeleri ona dönük** oturur. Yanındakiler de dahil herkes önden görünür, kimse yandan durmaz. Yan yana oturanların arası en az 1,4 m. Yayın merkezi izleyicinin önündedir (`k = 0.45`): masa yelpaze gibi değil **yuvarlak/oval** görünür, yan kenarları da dışa kavislidir; uçtakiler biraz daha yakın, ortadakiler biraz daha uzak oturur. Yayın uçları ±42° (4 kişi) ile ±46° (10 kişi) arasındadır (yuvarlak masada 10 kişide ±72°'ydi); varsayılan görüşte (70°) tüm sıra 16:9 ekrana sığar, kimseye bakmak için çok dönmek gerekmez. Herkes 2,8–3,2 m (küçük masa), 3,4–3,8 m (6 kişi) ile 6,2–7,2 m (10 kişi) uzakta; yüzler küçülürse tekerlekle yakınlaştır. Ölçüler `public/layout.js` → `ARC` (`spacing`: aralık, `k`: yuvarlaklık — büyüdükçe masa daha yuvarlak, ortadakiler daha uzak).
+Her oyuncu kendi ekranında gerçek bir **yuvarlak masa** görür: herkes (kendisi dahil) bir çemberin üstünde, **gövdesi masanın ortasına dönük** oturur. Tek fark, senin iki yanında boşluk bırakılmasıdır: düzgün yuvarlak masada yan komşular dibinde ve tam yanda (1,3–1,9 m, ±60–72°) olurdu; burada en az **2,8 m** uzakta ve **±46° (4 kişi) – ±52° (10 kişi)** yanda otururlar, kısa bir dönüşle rahat görülürler. Diğerleri çemberin geri kalanına, aralarında en az 1,4 m olacak şekilde dizilir. Uzaklıklar: 4–6 kişide 2,8–4,2 m, 8 kişide 3,1–4,9 m, 10 kişide 3,8–6,2 m; yüzler küçülürse tekerlekle / iki parmakla yakınlaştır. Ölçüler `public/layout.js` → `RING` (`side`: yan komşuların açısı, `nearMin`: yan komşuların uzaklığı, `spacing`: aralık).
 
-Yay üzerinde komşular birbirine yandan bakar. Bunu doğal göstermek için karakter yana bakarken **omuzları da döner**: dönüşün ~1/3'ü gövdeye geçer, boyun gövdeye göre en fazla ~55° bükülür (gövde Y ekseninde neredeyse simetrik; gölge haritası yenilenmez).
+Neden çember: herkes karşıda tek sıra halinde otururken iki kişi birbirine baktığında başlarını yana çevirir ve sana **profilden** görünürler; polis göz kırpmayı seçemez. Çemberde karşılıklı oturanlar birbirine bakarken yüzleri sana da dönüktür (göz kırpmanın rahat görüldüğü bakışlar ~%5'ten ~%30–40'a çıkar). Ayrıca **göz kırpma, her izleyicinin ekranında ona yakın olan gözle oynatılır**: karakter yandan görünse bile kırpan göz sana dönüktür (hangi gözün kırpıldığının oyunda anlamı yok).
+
+Karakter yana bakarken **omuzları da döner**: dönüşün ~1/3'ü gövdeye geçer, boyun gövdeye göre en fazla ~55° bükülür (gövde Y ekseninde neredeyse simetrik; gölge haritası yenilenmez).
 
 Oyun karşıdakinin yüzüne değil, **masanın üstüne** bakarak başlar (~15° aşağı); bu açıda kimse odakta olmaz.
 
-Sunucu kuralları değişmedi: oyun sunucuda yuvarlak masada (kanonik düzen) hesaplanır. İstemci bakışları iki düzen arasında **koltuk koltuk** eşler (`public/layout.js`): kanonik düzende X'in yüzüne bakan, kavisli masada da X'in yüzüne bakar; iki komşunun arasına bakıyorsa burada da oraya. Senin bakışın sunucuya kanonik açıyla gider, diğerlerininki ekranında kavisli düzene çevrilir. Böylece her karakter diğerlerine kavisli masadaki yerlerine göre bakar.
+Sunucu kuralları değişmedi: oyun sunucuda yuvarlak masada (kanonik düzen) hesaplanır. İstemci bakışları iki düzen arasında **koltuk koltuk** eşler (`public/layout.js`): kanonik düzende X'in yüzüne bakan, ekrandaki masada da X'in yüzüne bakar; iki komşunun arasına bakıyorsa burada da oraya. Senin bakışın sunucuya kanonik açıyla gider, diğerlerininki ekranındaki düzene çevrilir. Böylece her karakter diğerlerine ekrandaki masada oturdukları yerlere göre bakar.
 
 ### Odak ve göz teması
 
@@ -143,7 +145,7 @@ src/bots.js          bot beyni
 src/config.js        denge ayarları (cooldown, açılar, bot zorlukları)
 public/index.html    arayüz iskeleti     public/style.css   stil
 public/main.js       ağ, HUD, girdi      public/scene.js    Three.js sahnesi/karakterler
-public/layout.js     kavisli masa düzeni + sunucunun yuvarlak düzeniyle bakış eşlemesi
+public/layout.js     ekrandaki yuvarlak masa düzeni + sunucunun düzeniyle bakış eşlemesi
 public/i18n.js       arayüz metinleri (Türkçe, İngilizce)
 test/                birim + uçtan uca testler, denge simülasyonu
 ```
@@ -153,7 +155,7 @@ Sunucu kimin hangi rolde olduğunu yalnızca o oyuncuya söyler; işaret olaylar
 ## Test ve denge
 
 ```bash
-npm test             # 39 test: kurallar, süre sınırı, cinsiyet, çok katil/polis, hazır sistemi, çıkış ve rol devri, duraklatma, kavisli masa eşlemesi, protokol, çeviri tamlığı
+npm test             # 39 test: kurallar, süre sınırı, cinsiyet, çok katil/polis, hazır sistemi, çıkış ve rol devri, duraklatma, yuvarlak masa eşlemesi, protokol, çeviri tamlığı
 npm run sim          # bot-bot simülasyonu: polis/katil kazanma oranları
 node test/simulate.js 500 normal
 ```
