@@ -1,16 +1,28 @@
 // Oda/lobi yönetimi: istemci mesajlarını oyuna çevirir, oyunu zamanlayıcıyla ilerletir.
+// Odalar herkese açık (ana ekranda listelenir) ya da özel (yalnızca kodla) olur; her odanın bir ömrü vardır.
 import { Game } from './game.js';
-import { DEFAULTS, SIGNALS, DIFFICULTY, maxRoleCount } from './config.js';
+import { DEFAULTS, SIGNALS, DIFFICULTY, ROOMS, maxRoleCount } from './config.js';
 import { BOTS, cleanName, cleanGender, clamp, shuffle } from './util.js';
 
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
+/** Sunucuyu ayakta tutmayan zamanlayıcı (testler ve kapanış beklemesin). */
+function later(ms, fn) {
+  const t = setTimeout(fn, Math.max(0, ms));
+  t.unref?.();
+  return t;
+}
+
 class Room {
-  /** solo: "Hızlı oyun" odası — tek kişi + botlar; kodla katılınamaz, oyun duraklatılabilir. */
-  constructor(mgr, code, { solo = false } = {}) {
+  /**
+   * solo: "Hızlı oyun" odası — tek kişi + botlar; kodla katılınamaz, listelenmez, oyun duraklatılabilir.
+   * isPublic: herkese açık oda — ana ekrandaki listede görünür. Özel oda yalnızca kodla / davet linkiyle.
+   */
+  constructor(mgr, code, { solo = false, isPublic = false } = {}) {
     this.mgr = mgr;
     this.code = code;
     this.solo = solo;
+    this.isPublic = !solo && isPublic;
     this.paused = false;
     this.members = new Map(); // id -> client
     this.hostId = null;
@@ -26,6 +38,18 @@ class Room {
     this.game = null;
     this.timer = null;
     this.last = 0;
+
+    // Oda ömrü: süre dolunca kapanır (oyun sürüyorsa oyun bitip sonuç ekranı görüldükten sonra).
+    const life = mgr.cfg.lifetimeMin * 60000;
+    this.createdAt = Date.now();
+    this.expiresAt = this.createdAt + life;
+    this.expired = false;
+    this.destroyed = false;
+    this.closeTimer = null;
+    this.lifeTimers = [
+      later(life - mgr.cfg.warnMin * 60000, () => this.warn()),
+      later(life, () => this.expire()),
+    ];
   }
 
   /** Oyun başlarsa kaç kişi olacak: seçilen toplam, ama odadaki insan sayısından az olamaz. */
@@ -39,6 +63,11 @@ class Room {
     this.settings.killers = clamp(this.settings.killers, 1, max);
     this.settings.police = clamp(this.settings.police, 1, max);
     return max;
+  }
+
+  /** Odanın kapanmasına kalan süre (sn, yukarı yuvarlanır: süre dolmadan 0 görünmez). */
+  expiresIn() {
+    return Math.max(0, Math.ceil((this.expiresAt - Date.now()) / 1000));
   }
 
   emit(msg, to) {
@@ -57,6 +86,8 @@ class Room {
       t: 'lobby',
       code: this.code,
       solo: this.solo,
+      public: this.isPublic,
+      expiresIn: this.expiresIn(),
       hostId: this.hostId,
       players: [...this.members.values()].map((c) => ({ id: c.id, name: c.name, gender: c.gender, ready: this.ready.has(c.id) })),
       settings: {
@@ -64,6 +95,18 @@ class Room {
         // Bilgi amaçlı (lobide gösterilir): katilin süresi ve geri sayımın başladığı son saniyeler
         timeLimit: cfg.killerTimeLimit, countdown: cfg.countdownSeconds,
       },
+    };
+  }
+
+  /** Ana ekrandaki açık odalar listesindeki satırı. */
+  listEntry() {
+    return {
+      code: this.code,
+      host: this.members.get(this.hostId)?.name ?? '?',
+      players: this.members.size,
+      max: DEFAULTS.maxPlayers,
+      status: this.game ? 'game' : 'lobby',
+      expiresIn: this.expiresIn(),
     };
   }
 
@@ -82,21 +125,37 @@ class Room {
     if (!this.hostId) this.hostId = client.id;
     if (!this.game) this.broadcastLobby();
     else client.conn.send(JSON.stringify(this.lobbyMsg()));
+    this.mgr.listChanged();
   }
 
-  remove(client) {
+  /** Odadan çıkarır. reason: 'left' (kendisi çıktı / bağlantısı koptu) ya da 'kicked' (kurucu çıkardı). */
+  remove(client, reason = 'left') {
     if (!this.members.delete(client.id)) return;
     client.room = null;
     this.ready.delete(client.id);
     this.setPaused(false);
     // Oyun sırasında çıkan: herkese duyurulur, gerekirse rolü başkasına geçer (bkz. Game.leave).
-    if (this.game) this.game.leave(client.id);
+    if (this.game) this.game.leave(client.id, reason);
     if (this.members.size === 0) return this.destroy();
     if (this.hostId === client.id) {
       this.hostId = this.members.keys().next().value;
       if (this.game) this.emit({ t: 'host', id: this.hostId }, null); // oyun sonu ekranındaki "Lobiye dön" yeni kurucuda
     }
     if (!this.game) this.broadcastLobby();
+    this.mgr.listChanged();
+  }
+
+  /**
+   * Kurucu bir oyuncuyu odadan çıkarır (AFK kalan, ya da yeniden girip eski girişi odada kalan kişiler için).
+   * Lobide de oyun sırasında da olur; oyunda çıkarılan kişinin rolü gerekirse başkasına geçer.
+   */
+  kick(client, targetId) {
+    if (client.id !== this.hostId || this.solo) return;
+    const target = this.members.get(String(targetId));
+    if (!target || target === client) return;
+    target.conn.send(JSON.stringify({ t: 'kicked' }));
+    this.remove(target, 'kicked');
+    this.mgr.sendList(target); // ana ekrana döner: açık odaları görsün
   }
 
   /**
@@ -128,15 +187,59 @@ class Room {
     this.last = Date.now(); // duraklamada geçen süre oyuna yansımasın
   }
 
+  // ---------- Oda ömrü ----------
+  warn() {
+    if (this.destroyed || this.expired) return;
+    this.emit({ t: 'roomWarn', left: this.expiresIn() }, null);
+  }
+
+  expire() {
+    if (this.destroyed) return;
+    this.expired = true;
+    this.mgr.listChanged(); // listeden düşer, yeni katılım olmaz
+    if (!this.game) return this.close('expired');
+    this.emit({ t: 'roomExpiring' }, null); // "bu oyun bitince oda kapanacak"
+    if (this.game.phase === 'over') this.scheduleClose();
+  }
+
+  /** Süresi dolan odada oyun bitti: sonuç ekranı görülsün, sonra kapat. */
+  scheduleClose() {
+    if (!this.closeTimer) this.closeTimer = later(this.mgr.cfg.overGraceSec * 1000, () => this.close('expired'));
+  }
+
+  /** Odayı kapatır: herkes ana ekrana döner (bağlantıları açık kalır). */
+  close(reason) {
+    if (this.destroyed) return;
+    const members = [...this.members.values()];
+    this.members.clear();
+    const data = JSON.stringify({ t: 'closed', reason });
+    for (const c of members) {
+      c.room = null;
+      c.conn.send(data);
+    }
+    this.destroy();
+    for (const c of members) this.mgr.sendList(c);
+  }
+
   destroy() {
+    if (this.destroyed) return;
+    this.destroyed = true;
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
+    for (const t of this.lifeTimers) clearTimeout(t);
+    if (this.closeTimer) clearTimeout(this.closeTimer);
     this.game = null;
     this.mgr.rooms.delete(this.code);
+    this.mgr.listChanged();
   }
 
   updateSettings(client, m) {
     if (client.id !== this.hostId || this.game) return;
+    // Görünürlük (herkese açık / özel) bir oyun ayarı değil: değişince "Hazırım"lar sıfırlanmaz.
+    if (m.public !== undefined && !this.solo && this.isPublic !== !!m.public) {
+      this.isPublic = !!m.public;
+      this.mgr.listChanged();
+    }
     const s = this.settings;
     const before = JSON.stringify(s);
     if (m.total !== undefined) {
@@ -185,6 +288,7 @@ class Room {
     this.paused = false;
     this.last = Date.now();
     this.timer = setInterval(() => this.tick(), this.mgr.tickMs);
+    this.mgr.listChanged(); // listede "oyunda" görünsün
   }
 
   tick() {
@@ -197,30 +301,39 @@ class Room {
     if (this.game.phase === 'over' && this.timer) {
       clearInterval(this.timer);
       this.timer = null;
+      if (this.expired) this.scheduleClose();
     }
   }
 
   backToLobby(client) {
     if (client.id !== this.hostId || !this.game || this.game.phase !== 'over') return;
+    if (this.expired) return this.close('expired');
     this.game = null;
     this.broadcastLobby();
+    this.mgr.listChanged();
   }
 }
 
 export class Rooms {
-  constructor({ rng = Math.random, tickMs = 100, overrides = {} } = {}) {
+  /** roomCfg: oda ömrü / sınır ayarlarını değiştirir (bkz. config.js ROOMS; testlerde kısa süreler için). */
+  constructor({ rng = Math.random, tickMs = 100, overrides = {}, roomCfg = {} } = {}) {
     this.rooms = new Map();
     this.clients = new Set();
     this.nextId = 1;
     this.rng = rng;
     this.tickMs = tickMs;
     this.overrides = overrides;
+    this.cfg = { ...ROOMS, ...roomCfg };
+    this.listTimer = null;
+    this.closed = false;
     this.hb = setInterval(() => this.heartbeat(), 20000);
     this.hb.unref();
   }
 
   close() {
+    this.closed = true;
     clearInterval(this.hb);
+    if (this.listTimer) clearTimeout(this.listTimer);
     for (const room of [...this.rooms.values()]) room.destroy();
     for (const c of this.clients) c.conn.close(1001);
   }
@@ -238,6 +351,29 @@ export class Rooms {
     }
   }
 
+  // ---------- Açık odalar listesi (ana ekran) ----------
+  publicList() {
+    return [...this.rooms.values()]
+      .filter((r) => r.isPublic && !r.expired)
+      .sort((a, b) => Number(!!a.game) - Number(!!b.game) || b.createdAt - a.createdAt) // lobidekiler önce, yeniler üstte
+      .slice(0, this.cfg.listMax)
+      .map((r) => r.listEntry());
+  }
+
+  sendList(client) {
+    client.conn.send(JSON.stringify({ t: 'rooms', rooms: this.publicList() }));
+  }
+
+  /** Liste değişti: kısa bir gecikmeyle (art arda değişiklikler birleşir) odada olmayan herkese gönder. */
+  listChanged() {
+    if (this.listTimer || this.closed) return;
+    this.listTimer = later(this.cfg.listThrottleMs, () => {
+      this.listTimer = null;
+      const data = JSON.stringify({ t: 'rooms', rooms: this.publicList() });
+      for (const c of this.clients) if (!c.room) c.conn.send(data);
+    });
+  }
+
   handleConnection(conn) {
     const client = { id: `p${this.nextId++}`, conn, name: 'Oyuncu', gender: 'm', room: null, sec: 0, count: 0 };
     this.clients.add(client);
@@ -247,6 +383,7 @@ export class Rooms {
       this.clients.delete(client);
     };
     conn.send(JSON.stringify({ t: 'welcome', id: client.id }));
+    this.sendList(client);
   }
 
   heartbeat() {
@@ -268,9 +405,11 @@ export class Rooms {
 
     switch (m.t) {
       case 'join': return this.join(client, m);
+      case 'list': return client.room ? undefined : this.sendList(client);
       case 'leave': {
         room?.remove(client);
         client.conn.send(JSON.stringify({ t: 'left' }));
+        this.sendList(client);
         return;
       }
       case 'settings': return room?.updateSettings(client, m);
@@ -278,6 +417,7 @@ export class Rooms {
       case 'again': return room?.backToLobby(client);
       case 'pause': return room?.pause(client, m.on);
       case 'ready': return room?.setReady(client, !!m.on);
+      case 'kick': return room?.kick(client, m.id);
       case 'gaze': return room?.game?.setGaze(client.id, Number(m.y), Number(m.p));
       case 'wink':
       case 'accuse':
@@ -300,12 +440,15 @@ export class Rooms {
     client.gender = cleanGender(m.gender); // isim ekranında seçilir; karakterin görünüşünü belirler
     let room;
     if (m.create || m.quick) {
+      if (this.rooms.size >= this.cfg.maxRooms) {
+        return this.err(client, 'Sunucuda şu an çok fazla oda var. Biraz sonra dene.', 'serverFull');
+      }
       // Hızlı oyun da önce ayar ekranına (lobiye) gelir; botlara karşı tek kişilik, kodu paylaşılmayan oda.
-      room = new Room(this, this.newCode(), { solo: !!m.quick });
+      room = new Room(this, this.newCode(), { solo: !!m.quick, isPublic: !!m.public });
       this.rooms.set(room.code, room);
     } else {
       room = this.rooms.get(String(m.room || '').toUpperCase().trim());
-      if (!room || room.solo) return this.err(client, 'Oda bulunamadı.', 'noRoom');
+      if (!room || room.solo || room.expired) return this.err(client, 'Oda bulunamadı.', 'noRoom');
     }
     if (room.game) return this.err(client, 'Bu odada oyun devam ediyor.', 'inProgress');
     if (room.members.size >= DEFAULTS.maxPlayers) return this.err(client, 'Oda dolu.', 'full');

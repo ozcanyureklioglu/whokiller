@@ -308,11 +308,11 @@ export class Game {
   }
 
   /**
-   * Bir insan oyun sırasında çıktı (menüden ya da bağlantısı koptu). Masadan kalkar ve herkese duyurulur.
+   * Bir insan oyun sırasında çıktı (menüden, bağlantısı koptu ya da kurucu çıkardı). Masadan kalkar ve herkese duyurulur.
    * Rolünün masada kalan son kişisiyse (son katil / hakkı olan son polis) rolü, canlı ve işaret almamış
    * rastgele bir vatandaşa geçer; yalnızca o kişiye bildirilir. Devralacak kimse yoksa oyun biter.
    */
-  leave(id) {
+  leave(id, reason = 'left') {
     const p = this.byId.get(id);
     if (!p || p.left || this.phase === 'over') return;
     const wasAlive = p.alive;
@@ -335,6 +335,7 @@ export class Game {
     this.emit({
       t: 'quit',
       id: p.id,
+      reason, // 'left': kendisi çıktı / bağlantısı koptu · 'kicked': kurucu çıkardı
       role: p.role,
       heir: !!heir,
       left: this.players.filter((q) => q.alive && q.role === 'citizen').length,

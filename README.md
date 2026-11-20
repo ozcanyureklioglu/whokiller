@@ -17,14 +17,23 @@ npm start            # http://localhost:3000
 
 ## Nasıl oynanır
 
+Oyunun içinde de anlatılır: ana ekranda (başlığın yanında) ve lobide **❔ Nasıl oynanır?** düğmesi 8 adımlık bir pencere açar (roller, masaya bakmak, katil, vatandaş, polis, kazanma, kontroller, odalar). Her adımda oyundan çekilmiş bir ekran görüntüsü var; ← → / kaydırma ile ilerlenir, Esc ile kapanır. Görseller `public/howto/<adım>-<dil>.webp` (Türkçe ve İngilizce ayrı, toplam ~260 KB), metinler `public/i18n.js` → `ht.*`, adım sırası `public/main.js` → `HOWTO`.
+
 0. Ana menüde adını yaz ve **cinsiyetini seç** (Erkek / Kadın): karakterinin görünüşü buna göre çizilir. Seçmeden oyuna girilmez; seçim tarayıcıda hatırlanır. Botların cinsiyeti isimlerinden gelir.
-1. **Hızlı oyun**: tek başına botlara karşı; önce ayar ekranı gelir (oyuncu sayısı, katil/polis sayısı, işaret, bot becerisi), oda kodla katılmaya kapalıdır. **Oda kur**: arkadaşların kodla / davet linkiyle katılır, eksikler bot olur. Katılanlar lobide **"Hazırım"** der (listede ✓ hazır görünür); kurucunun **Başlat** düğmesi diğer herkes hazır olana kadar kilitlidir ("Hazır bekleniyor (1/2)"), sunucu da bunu denetler. Botlar hazır beklemez. Kurucu bir ayarı değiştirirse hazırlar sıfırlanır: herkes son ayarları görüp yeniden onaylar.
+1. **Hızlı oyun**: tek başına botlara karşı; önce ayar ekranı gelir (oyuncu sayısı, katil/polis sayısı, işaret, bot becerisi), oda kodla katılmaya kapalıdır. **Oda kur**: **herkese açık** (ana ekrandaki listede görünür, isteyen katılır) ya da **özel** (yalnızca kodla / davet linkiyle) oda; eksikler bot olur (bkz. *Odalar*). Katılanlar lobide **"Hazırım"** der (listede ✓ hazır görünür); kurucunun **Başlat** düğmesi diğer herkes hazır olana kadar kilitlidir ("Hazır bekleniyor (1/2)"), sunucu da bunu denetler. Botlar hazır beklemez. Kurucu bir ayarı değiştirirse hazırlar sıfırlanır: herkes son ayarları görüp yeniden onaylar.
 2. Herkes rolünü 5 sn görür (ve kimseye söylemez). Sonra oyun başlar.
 3. **Katil**: bir oyuncunun gözüne bak, işaret yap (göz kırp / dil çıkar / kaş kaldır). O an sana bakan herkes işareti görür.
 4. **Vatandaş**: bir işareti *kendine yapıldığını fark ettiysen* ekranda kırmızı uyarı çıkar, **"Ben öldüm!"** de. Fark etmediysen ölmezsin.
 5. **Polis**: işareti yakalamaya çalış. Katili bulursan ona bakıp **"Katil sensin!"** de. Yanlış suçlarsan hak kaybedersin ve polis olduğun herkese görünür.
 6. Polis katili yakalarsa polis (ve vatandaşlar) kazanır. Katil tüm vatandaşları bitirirse ya da polisin hakkı biterse katil kazanır.
 7. **Süre sınırı:** katilin **5 dakikası** var (rol kartı kapanınca başlar). Bu sürede tüm vatandaşları öldüremezse katil kaybeder. Bu bilgi lobide yazılıdır. **4. dakikadan sonra** (son 1 dakika) ekranın üstünde herkese geri sayım çıkar; son 10 saniyede kırmızıya döner. Süreler `src/config.js` → `killerTimeLimit`, `countdownSeconds`.
+
+### Odalar
+
+- **Herkese açık / özel:** ana ekranda "Oda kur"un üstünden seçilir (seçim hatırlanır); kurucu lobide de değiştirebilir (oyun ayarı sayılmaz, "Hazırım"lar sıfırlanmaz). Özel odaya yalnızca kodla ya da davet linkiyle girilir.
+- **Açık odalar listesi** (ana ekran, CS sunucu listesi gibi): kurucunun adı, kişi sayısı (`3/10`), durum (*Lobide* / *Oyunda*) ve odanın kapanmasına kalan süre. Lobidekiler üstte; oyunda ya da dolu olana katılınamaz. Liste sunucudan anlık gelir (değişiklikler 0,3 sn içinde birleştirilip yayınlanır).
+- **Oda süresi:** sunucuda yük birikmesin diye her oda kurulduktan **60 dk** sonra kapanır; **5 dk** kala odadakilere haber verilir, lobide kalan süre görünür. Süre dolduğunda oyun sürüyorsa oda, oyun bitip sonuç ekranı görüldükten (15 sn) sonra kapanır; herkes ana ekrana döner. Sunucuda aynı anda en fazla **50 oda** olabilir. Boş kalan oda hemen silinir. Ayarlar `src/config.js` → `ROOMS`.
+- **Kurucu oyuncu çıkarabilir:** lobide oyuncu listesinde, oyun sırasında Esc menüsünde **Çıkar** (iki tıkla onay). AFK kalanlar ya da yeniden girip eski girişi odada kalanlar için. Çıkarılan ana ekrana döner; oyundaysa herkese "kurucu tarafından çıkarıldı" diye duyurulur ve rolü gerekirse (son katil / hakkı olan son polis) başkasına geçer.
 
 ### Karakterlerin görünüşü
 
@@ -121,7 +130,7 @@ Neden hızlı (`public/scene.js` başındaki notlar):
 - **Polis hakkı:** her polisin 2 yanlış suçlama hakkı (lobide 1–3). Her suçlama arası 2 sn.
 - **Süre sınırı:** oyun başladıktan 5 dk sonra katil(ler) hâlâ tüm vatandaşları bitirmediyse polis (ve vatandaşlar) kazanır (sebep `timeUp`). Son 1 dakikaya girilince sunucu herkese bir kez `countdown` gönderir; istemci oradan sayar (tek kişilik oyunda duraklatınca sayaç da durur).
 - **Ölenler** seyirci olur: herkesin rolünü görür, işaretleri görür.
-- **Oyundan çıkan** (menüden ya da bağlantısı koptu) masadan kalkar ve **herkese duyurulur** (bildirim, akışta rolüyle birlikte, başının üstünde "çıktı"). Masadaki **son katil** ya da **hakkı olan son polis** ise rolü, canlı ve işaret almamış **rastgele bir vatandaşa** geçer: yalnızca o kişiye bildirilir (rol kartı + "Rolün değişti"). Polis kalan hakkını devralır; katil ilk işaretinden önce 3 sn etrafa bakabilir. Devralacak kimse yoksa oyun biter. Kurucu çıkarsa kuruculuk bir sonrakine geçer.
+- **Oyundan çıkan** (menüden, bağlantısı koptu ya da kurucu çıkardı) masadan kalkar ve **herkese duyurulur** (bildirim, akışta rolüyle birlikte, başının üstünde "çıktı"). Masadaki **son katil** ya da **hakkı olan son polis** ise rolü, canlı ve işaret almamış **rastgele bir vatandaşa** geçer: yalnızca o kişiye bildirilir (rol kartı + "Rolün değişti"). Polis kalan hakkını devralır; katil ilk işaretinden önce 3 sn etrafa bakabilir. Devralacak kimse yoksa oyun biter. Kurucu çıkarsa kuruculuk bir sonrakine geçer.
 - Vatandaşlar polisle aynı takım sayılır ("Kazandın/Kaybettin" ekranı buna göre).
 
 ## Botlar
@@ -147,6 +156,7 @@ public/index.html    arayüz iskeleti     public/style.css   stil
 public/main.js       ağ, HUD, girdi      public/scene.js    Three.js sahnesi/karakterler
 public/layout.js     ekrandaki yuvarlak masa düzeni + sunucunun düzeniyle bakış eşlemesi
 public/i18n.js       arayüz metinleri (Türkçe, İngilizce)
+public/howto/        "Nasıl oynanır" görselleri (oyundan ekran görüntüleri, her dil için)
 test/                birim + uçtan uca testler, denge simülasyonu
 ```
 
@@ -155,7 +165,7 @@ Sunucu kimin hangi rolde olduğunu yalnızca o oyuncuya söyler; işaret olaylar
 ## Test ve denge
 
 ```bash
-npm test             # 39 test: kurallar, süre sınırı, cinsiyet, çok katil/polis, hazır sistemi, çıkış ve rol devri, duraklatma, yuvarlak masa eşlemesi, protokol, çeviri tamlığı
+npm test             # 43 test: kurallar, nasıl oynanır görselleri, süre sınırı, cinsiyet, açık/özel oda listesi, oda süresi, oyuncu çıkarma, çok katil/polis, hazır sistemi, çıkış ve rol devri, duraklatma, yuvarlak masa eşlemesi, protokol, çeviri tamlığı
 npm run sim          # bot-bot simülasyonu: polis/katil kazanma oranları
 node test/simulate.js 500 normal
 ```

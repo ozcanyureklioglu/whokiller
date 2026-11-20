@@ -1,6 +1,6 @@
 // i18n.js — arayüz metinleri. Yeni dil eklemek için: LANGS'a ekle, aşağıya aynı anahtarlarla bir sözlük yaz.
 // Eksik anahtar önce Türkçeye, o da yoksa anahtarın kendisine düşer.
-// HTML'de: data-i18n="anahtar" (metin), data-i18n-ph="anahtar" (placeholder).
+// HTML'de: data-i18n="anahtar" (metin), data-i18n-ph="anahtar" (placeholder), data-i18n-aria="anahtar" (aria-label).
 
 export const LANGS = { tr: 'Türkçe', en: 'English' };
 
@@ -41,6 +41,42 @@ export const DICT = {
     'lobby.timeNoteMany': '⏱ Süre sınırı {limit}: katiller bu sürede tüm vatandaşları öldüremezse kaybeder. {start} sonra herkese geri sayım başlar.',
     'lobby.soloTitle': 'Hızlı oyun', 'lobby.soloSub': 'Botlara karşı, tek başına. Ayarları seç ve başlat.',
     'lobby.back': 'Geri',
+
+    // Nasıl oynanır (adım adım; maddeler satır satır)
+    'ht.open': '❔ Nasıl oynanır?', 'ht.step': 'Adım {n} / {total}', 'ht.close': 'Kapat',
+    'ht.prev': '‹ Geri', 'ht.next': 'İleri ›', 'ht.done': 'Anladım, oynayalım!',
+    'ht.roles.t': 'Rolünü öğren',
+    'ht.roles.b': 'Oyun başında herkes gizli bir rol alır ve rol kartını 5 saniye görür. Rolünü kimseye söyleme!\n🔪 Katil: vatandaşlara göz kırparak (ya da lobide seçilen işaretle: dil çıkarma, kaş kaldırma) onları öldürür.\n🚓 Polis: katili işaret yaparken yakalamaya çalışır.\n🙂 Vatandaş: etrafı izler; kendisine işaret yapıldığını fark ederse ölür.',
+    'ht.look.t': 'Masaya bak',
+    'ht.look.b': 'Herkes yuvarlak bir masada oturur. Fareyi oynatarak (telefonda kaydırarak ya da joystick ile) etrafına bak.\nEkranın ortasındaki nişangâhı bir yüze getirince o kişi odağa girer: çerçevede adı görünür.\nBaşında 👁 olanlar şu an sana bakıyor. Bir işareti yalnızca o anda işaret yapana bakanlar görür.',
+    'ht.killer.t': 'Katil: göz kırp',
+    'ht.killer.b': 'Bir vatandaşın gözünün içine bak. Çerçeve turuncu olup “göz göze!” yazıyorsa o da sana bakıyor.\nTam o anda Boşluk’a (telefonda alttaki düğmeye) bas ve işaretini yap. İki işaret arasında birkaç saniye beklersin.\nO an sana bakan herkes işareti görür: polis de bakıyorsa yakalanırsın. Kimse izlemiyorken davran!',
+    'ht.citizen.t': 'Vatandaş: fark et',
+    'ht.citizen.b': 'Biri sana işaret yaparsa ekran kırmızı yanar: “Biri sana işaret yaptı!”\n10 saniye içinde “Ben öldüm!” de (Boşluk ya da düğme); demezsen yine elenirsin.\nFark etmediğin işaret seni öldürmez. Öldükten sonra seyirci olur, herkesin rolünü görürsün.',
+    'ht.police.t': 'Polis: yakala',
+    'ht.police.b': 'Odağındaki yüz, sağ alttaki yakın plan penceresinde büyük görünür: işareti kaçırma.\nBirini işaret yaparken gördüysen ona bak ve “Katil sensin!” de.\nYanlış suçlarsan bir hakkın gider ve polis olduğun herkese görünür. Hak sayısı lobide seçilir (1–3).',
+    'ht.win.t': 'Kim kazanır?',
+    'ht.win.b': 'Polis tüm katilleri yakalarsa polis ve vatandaşlar kazanır.\nKatilin 5 dakikası var: süre dolarsa katil kaybeder. Son 1 dakikada ekranın üstünde geri sayım çıkar.\nKatil tüm vatandaşları öldürürse ya da polislerin bütün hakları biterse katil kazanır.',
+    'ht.controls.t': 'Kontroller',
+    'ht.controls.b': 'Bilgisayar: fareyle bak · tekerlekle yakınlaştır · Boşluk: eylem · Esc: menü · R: rolünü ekranda gizle.\nTelefon: kaydırarak bak · ekrana dokununca çıkan joystick ile sürekli dön · iki parmakla yakınlaştır · alttaki düğme: eylem.\nYüzler uzaktaysa yakınlaştır: göz kırpmayı yakından görmek çok daha kolay.',
+    'ht.rooms.t': 'Oda kur, birlikte oyna',
+    'ht.rooms.b': 'Hızlı oyun: tek başına, botlara karşı.\nOda kur: herkese açık oda ana ekrandaki listede görünür, isteyen katılır; özel odaya yalnızca kodla ya da davet linkiyle girilir.\nKatılanlar “Hazırım” der, kurucu başlatır; eksik oyuncular bot olur. Kurucu AFK kalanları çıkarabilir. Odalar 60 dakika sonra kapanır.',
+
+    // Odalar: herkese açık / özel, açık odalar listesi, oda süresi, oyuncu çıkarma
+    'room.public': '🌐 Herkese açık', 'room.private': '🔒 Özel (kodla)',
+    'list.title': 'Açık odalar', 'list.count': '{n} oda', 'list.room': '👑 {host}',
+    'list.empty': 'Şu an açık oda yok. İlk odayı sen kur!',
+    'list.lobby': 'Lobide', 'list.game': 'Oyunda', 'list.full': 'Dolu', 'list.left': '{left} kaldı',
+    'lobby.publicNote': 'Herkese açık: ana ekrandaki listede görünür, isteyen katılabilir.',
+    'lobby.privateNote': 'Özel: listede görünmez; yalnızca kodu ya da davet linkini bilenler girebilir.',
+    'lobby.roomTime': '⏳ Oda {left} sonra kapanır',
+    'lobby.kick': 'Çıkar', 'lobby.kickSure': 'Emin misin?',
+    'pause.kickTitle': 'Oyuncuyu odadan çıkar (kurucu)',
+    'toast.kicked': 'Kurucu seni odadan çıkardı.', 'toast.kickedOther': '{name} odadan çıkarıldı.',
+    'toast.closed': 'Odanın süresi doldu, oda kapandı.',
+    'toast.roomWarn': 'Odanın kapanmasına {left} kaldı.',
+    'toast.roomExpiring': 'Odanın süresi doldu: bu oyun bitince oda kapanacak.',
+    'feed.kicked': '{name} kurucu tarafından çıkarıldı ({role}).', 'tag.kicked': 'çıkarıldı',
 
     'pause.title': 'Menü', 'pause.paused': 'Oyun duraklatıldı',
     'pause.live': 'Çok oyunculu oyunda oyun durmaz: masadakiler oynamaya devam ediyor.',
@@ -129,6 +165,7 @@ export const DICT = {
     'err.alreadyOut': 'Zaten oyun dışısın.', 'err.notNoticed': 'Fark etmeden ölemezsin.',
     'err.noLives': 'Suçlama hakkın kalmadı.', 'err.hostOnly': 'Oyunu yalnızca oda kurucusu başlatabilir.',
     'err.notReady': 'Herkes hazır değil.', 'err.noRoom': 'Oda bulunamadı.', 'err.inProgress': 'Bu odada oyun devam ediyor.', 'err.full': 'Oda dolu.',
+    'err.serverFull': 'Sunucuda şu an çok fazla oda var. Biraz sonra dene ya da açık bir odaya katıl.',
   },
 
   en: {
@@ -167,6 +204,40 @@ export const DICT = {
     'lobby.timeNoteMany': '⏱ Time limit {limit}: if the killers haven\'t eliminated every citizen by then, they lose. A countdown starts for everyone after {start}.',
     'lobby.soloTitle': 'Quick game', 'lobby.soloSub': 'Solo, against bots. Pick your settings and start.',
     'lobby.back': 'Back',
+
+    'ht.open': '❔ How to play', 'ht.step': 'Step {n} of {total}', 'ht.close': 'Close',
+    'ht.prev': '‹ Back', 'ht.next': 'Next ›', 'ht.done': 'Got it, let\'s play!',
+    'ht.roles.t': 'Learn your role',
+    'ht.roles.b': 'At the start everyone gets a secret role and sees their role card for 5 seconds. Keep it to yourself!\n🔪 Killer: kills citizens by winking at them (or with the signal picked in the lobby: tongue out, eyebrow raise).\n🚓 Police: tries to catch the killer in the act.\n🙂 Citizen: watches the table; dies on noticing a signal aimed at them.',
+    'ht.look.t': 'Look around the table',
+    'ht.look.b': 'Everyone sits at a round table. Move the mouse to look around (on a phone: swipe, or use the joystick).\nPut the crosshair on a face to focus on that person: their name appears in the frame.\nAn 👁 above a head means that person is looking at you right now. A signal is seen only by those looking at the signaler at that moment.',
+    'ht.killer.t': 'Killer: wink',
+    'ht.killer.b': 'Look a citizen in the eye. If the frame turns orange and says “eye contact!”, they are looking at you too.\nRight then, press Space (the button at the bottom on a phone) to signal. You wait a few seconds between signals.\nEveryone looking at you at that moment sees it: if the police is watching, you get caught. Strike when nobody is watching!',
+    'ht.citizen.t': 'Citizen: notice it',
+    'ht.citizen.b': 'If someone signals you, the screen flashes red: “Someone signaled you!”\nSay “I\'m dead!” within 10 seconds (Space or the button); if you don\'t, you are out anyway.\nA signal you didn\'t notice can\'t kill you. Once dead, you become a spectator and see everyone\'s role.',
+    'ht.police.t': 'Police: catch them',
+    'ht.police.b': 'The face you focus on is shown large in the close-up window at the bottom right: don\'t miss the signal.\nIf you saw someone signal, look at them and say “You\'re the killer!”.\nA wrong accusation costs a chance and reveals you as police. The number of chances is set in the lobby (1–3).',
+    'ht.win.t': 'Who wins?',
+    'ht.win.b': 'If the police catch every killer, the police and citizens win.\nThe killer has 5 minutes: when time runs out, the killer loses. A countdown appears at the top in the last minute.\nIf the killer eliminates every citizen, or the police run out of chances, the killer wins.',
+    'ht.controls.t': 'Controls',
+    'ht.controls.b': 'Computer: look with the mouse · zoom with the wheel · Space: action · Esc: menu · R: hide your role on screen.\nPhone: swipe to look · the joystick (appears when you touch the screen) keeps turning · pinch to zoom · bottom button: action.\nZoom in if faces are far away: winks are much easier to spot up close.',
+    'ht.rooms.t': 'Create a room, play together',
+    'ht.rooms.b': 'Quick game: solo, against bots.\nCreate room: a public room shows up in the list on the main screen and anyone can join; a private room needs the code or invite link.\nPlayers press “I\'m ready” and the host starts; missing players are filled with bots. The host can remove AFK players. Rooms close after 60 minutes.',
+
+    'room.public': '🌐 Public', 'room.private': '🔒 Private (code)',
+    'list.title': 'Public rooms', 'list.count': '{n} rooms', 'list.room': '👑 {host}',
+    'list.empty': 'No public rooms right now. Create the first one!',
+    'list.lobby': 'In lobby', 'list.game': 'In game', 'list.full': 'Full', 'list.left': '{left} left',
+    'lobby.publicNote': 'Public: listed on the main screen, anyone can join.',
+    'lobby.privateNote': 'Private: not listed; only people with the code or invite link can join.',
+    'lobby.roomTime': '⏳ Room closes in {left}',
+    'lobby.kick': 'Kick', 'lobby.kickSure': 'Sure?',
+    'pause.kickTitle': 'Remove a player from the room (host)',
+    'toast.kicked': 'The host removed you from the room.', 'toast.kickedOther': '{name} was removed from the room.',
+    'toast.closed': 'The room\'s time is up; it has been closed.',
+    'toast.roomWarn': 'The room closes in {left}.',
+    'toast.roomExpiring': 'The room\'s time is up: it will close when this game ends.',
+    'feed.kicked': '{name} was removed by the host ({role}).', 'tag.kicked': 'removed',
 
     'pause.title': 'Menu', 'pause.paused': 'Game paused',
     'pause.live': 'Online games don\'t pause: everyone else at the table keeps playing.',
@@ -254,6 +325,7 @@ export const DICT = {
     'err.alreadyOut': 'You\'re already out.', 'err.notNoticed': 'You can\'t die without noticing a signal.',
     'err.noLives': 'You have no accusations left.', 'err.hostOnly': 'Only the host can start the game.',
     'err.notReady': 'Not everyone is ready.', 'err.noRoom': 'Room not found.', 'err.inProgress': 'A game is in progress in this room.', 'err.full': 'The room is full.',
+    'err.serverFull': 'There are too many rooms on the server right now. Try again soon or join a public room.',
   },
 };
 
@@ -289,5 +361,6 @@ export function t(key, params) {
 export function applyStatic(root = document) {
   for (const n of root.querySelectorAll('[data-i18n]')) n.textContent = t(n.dataset.i18n);
   for (const n of root.querySelectorAll('[data-i18n-ph]')) n.placeholder = t(n.dataset.i18nPh);
+  for (const n of root.querySelectorAll('[data-i18n-aria]')) n.setAttribute('aria-label', t(n.dataset.i18nAria));
   document.title = t('app.title');
 }

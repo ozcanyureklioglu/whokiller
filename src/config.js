@@ -38,6 +38,19 @@ export const DIFFICULTY = {
   },
 };
 
+/**
+ * Oda ayarları. Sunucuda yük birikmesin diye her odanın bir ömrü ve sunucuda oda sayısı sınırı var.
+ * (Boş kalan oda hemen silinir; kopan bağlantılar 70 sn içinde düşer.)
+ */
+export const ROOMS = {
+  lifetimeMin: 60,     // oda kurulduktan bu kadar dakika sonra kapanır (oyun sürüyorsa oyun bitince)
+  warnMin: 5,          // kapanmadan bu kadar dakika önce odadakilere haber verilir
+  overGraceSec: 15,    // süresi dolan odada oyun bitince sonuç ekranı için tanınan süre (sn)
+  maxRooms: 50,        // sunucuda aynı anda en fazla bu kadar oda (hızlı oyunlar dahil)
+  listMax: 50,         // ana ekrandaki açık odalar listesinde en fazla bu kadar oda
+  listThrottleMs: 300, // açık odalar listesi en fazla bu sıklıkla yayınlanır
+};
+
 /** Her bu kadar oyuncuya en fazla 1 katil ve 1 polis düşer (4–7 kişi: 1+1, 8–10 kişi: en fazla 2+2). */
 export const PLAYERS_PER_ROLE = 4;
 

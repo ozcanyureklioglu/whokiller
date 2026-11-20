@@ -37,11 +37,19 @@ const el = {
   codeRow: $('#codeRow'), soloHead: $('#soloHead'),
   menuBtn: $('#menuBtn'), pause: $('#pause'), pauseTitle: $('#pauseTitle'), pauseNote: $('#pauseNote'),
   btnResume: $('#btnResume'), btnQuit: $('#btnQuit'),
+  roomType: $('#roomType'), rooms: $('#rooms'), roomsEmpty: $('#roomsEmpty'), rlCount: $('#rlCount'),
+  roomRow: $('#roomRow'), visSeg: $('#visSeg'), roomTimer: $('#roomTimer'), visNote: $('#visNote'),
+  kickBox: $('#kickBox'), kickList: $('#kickList'),
+  howto: $('#howto'), htStep: $('#htStep'), htImgBox: $('#htImgBox'), htImg: $('#htImg'), htTitle: $('#htTitle'),
+  htText: $('#htText'), htDots: $('#htDots'), htPrev: $('#htPrev'), htNext: $('#htNext'), htClose: $('#htClose'),
 };
 
 const S = {
   ws: null, id: null, code: null, hostId: null, players: [], settings: null,
   gender: null, // 'm' | 'f': isim ekranında seçilir (karakterin görünüşü); seçilmeden oyuna girilmez
+  roomType: 'public', // kurulacak odanın türü: 'public' (listede görünür) | 'private' (yalnızca kodla)
+  publicRooms: [], // ana ekrandaki açık odalar (sunucunun "rooms" mesajı; endAt: kapanma anı)
+  isPublic: false, roomEndAt: 0, // içinde bulunduğum odanın görünürlüğü ve kapanma anı
   game: null, world: null, locked: false, roleHidden: false,
   menu: false, menuAt: 0, unlocking: false, solo: false,
   gaze: new Map(), // id -> [yaw, pitch]: sunucunun yayınladığı son bakışlar
@@ -168,6 +176,8 @@ function connect() {
     setConnButtons(false);
     if (S.game || S.code) toast(t('toast.disconnected'), 'bad');
     resetToHome();
+    S.publicRooms = [];
+    renderRooms();
     el.connState.dataset.i18n = 'conn.none';
     el.connState.textContent = t('conn.none');
   };
@@ -195,8 +205,107 @@ function handle(m) {
     case 'host': onHost(m); break;
     case 'paused': onPaused(m); break;
     case 'left': resetToHome(); break;
+    case 'rooms': onRooms(m); break;
+    case 'kicked': toast(t('toast.kicked'), 'bad'); resetToHome(); break;
+    case 'closed': toast(t('toast.closed'), 'bad'); resetToHome(); break;
+    case 'roomWarn': toast(t('toast.roomWarn', { left: fmtLeft(m.left) })); break;
+    case 'roomExpiring':
+      toast(t('toast.roomExpiring'), 'bad');
+      if (S.game) addFeed(t('toast.roomExpiring'), 'bad');
+      break;
     default:
   }
+}
+
+// ---------------------------------------------------------------------------
+// Açık odalar (ana ekran) ve oda süresi
+// ---------------------------------------------------------------------------
+/** Kalan süre: 2 dk'dan fazlaysa dakikaya yuvarlanır ("42 dk"), azsa saniyesiyle ("1 dk 30 sn"). */
+function fmtLeft(sec) {
+  return sec > 120 ? t('dur.min', { n: Math.ceil(sec / 60) }) : fmtDur(sec);
+}
+
+function onRooms(m) {
+  const now = performance.now();
+  S.publicRooms = (m.rooms || []).map((r) => ({ ...r, endAt: now + r.expiresIn * 1000 }));
+  renderRooms();
+}
+
+function renderRooms() {
+  const list = S.publicRooms;
+  const online = S.ws?.readyState === 1;
+  el.rlCount.textContent = list.length ? t('list.count', { n: list.length }) : '';
+  el.roomsEmpty.classList.toggle('hidden', list.length > 0);
+  el.rooms.replaceChildren(...list.map((r) => {
+    const li = document.createElement('li');
+    const info = document.createElement('div');
+    info.className = 'ri';
+    const name = document.createElement('b');
+    name.textContent = t('list.room', { host: r.host });
+    const sub = document.createElement('small');
+    const status = document.createElement('span');
+    status.className = r.status === 'game' ? 'ingame' : '';
+    status.textContent = t(r.status === 'game' ? 'list.game' : 'list.lobby');
+    r.leftEl = document.createElement('span');
+    r.leftEl.textContent = t('list.left', { left: fmtLeft((r.endAt - performance.now()) / 1000) });
+    sub.append(`${r.players}/${r.max} · `, status, ' · ', r.leftEl);
+    info.append(name, sub);
+    const full = r.players >= r.max;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.textContent = t(r.status === 'game' ? 'list.game' : full ? 'list.full' : 'home.join');
+    btn.disabled = !online || r.status === 'game' || full;
+    btn.onclick = () => joinRoom({ room: r.code });
+    li.append(info, btn);
+    return li;
+  }));
+}
+
+/** Her saniye: lobideki oda süresi ve listedeki kalan süreler. */
+function tickRoomTimers() {
+  const now = performance.now();
+  if (S.code && !S.game && S.roomEndAt) {
+    const left = Math.max(0, (S.roomEndAt - now) / 1000);
+    setText(el.roomTimer, t('lobby.roomTime', { left: fmtLeft(left) }));
+    setClass(el.roomTimer, left <= 300 ? 'muted warn' : 'muted');
+  }
+  if (!el.home.classList.contains('hidden')) {
+    for (const r of S.publicRooms) if (r.leftEl) setText(r.leftEl, t('list.left', { left: fmtLeft(Math.max(0, (r.endAt - now) / 1000)) }));
+  }
+}
+setInterval(tickRoomTimers, 1000);
+
+/** Kurucunun "Çıkar" düğmesi: yanlışlıkla basılmasın diye iki tıkla onaylanır. */
+function kickButton(id) {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'kick';
+  b.textContent = t('lobby.kick');
+  let timer = 0;
+  b.onclick = () => {
+    if (!b.classList.contains('sure')) {
+      b.classList.add('sure');
+      b.textContent = t('lobby.kickSure');
+      timer = setTimeout(() => { b.classList.remove('sure'); b.textContent = t('lobby.kick'); }, 3000);
+      return;
+    }
+    clearTimeout(timer);
+    b.disabled = true;
+    send({ t: 'kick', id });
+  };
+  return b;
+}
+
+function renderSeg(seg, value) {
+  for (const b of seg.querySelectorAll('button[data-v]')) b.setAttribute('aria-checked', String(b.dataset.v === value));
+}
+
+/** Lobide görünürlük (kurucu değiştirir) ve açıklaması. */
+function renderVisibility() {
+  const isHost = S.id === S.hostId;
+  renderSeg(el.visSeg, S.isPublic ? 'public' : 'private');
+  for (const b of el.visSeg.querySelectorAll('button')) b.disabled = !isHost;
+  el.visNote.textContent = t(S.isPublic ? 'lobby.publicNote' : 'lobby.privateNote');
 }
 
 // ---------------------------------------------------------------------------
@@ -208,6 +317,8 @@ function onLobby(m) {
   S.players = m.players;
   S.settings = m.settings;
   S.solo = !!m.solo;
+  S.isPublic = !!m.public;
+  if (m.expiresIn !== undefined) S.roomEndAt = performance.now() + m.expiresIn * 1000;
   if (S.game) { S.game = null; S.world?.setDemo(true); document.body.classList.remove('spectator'); }
   el.revealCard.classList.add('hidden');
   closeMenu(false);
@@ -218,19 +329,27 @@ function onLobby(m) {
   // Hızlı oyun: botlara karşı tek kişilik oda — kod / davet / oyuncu listesi gerekmez, ayarlar aynı.
   el.codeRow.classList.toggle('hidden', S.solo);
   el.plist.classList.toggle('hidden', S.solo);
+  el.roomRow.classList.toggle('hidden', S.solo);
+  el.visNote.classList.toggle('hidden', S.solo);
   el.soloHead.classList.toggle('hidden', !S.solo);
   el.btnLeave.textContent = t(S.solo ? 'lobby.back' : 'lobby.leave');
   el.roomCode.textContent = m.code;
+  renderVisibility();
+  tickRoomTimers();
   el.plist.innerHTML = '';
   for (const p of m.players) {
     const li = document.createElement('li');
     const left = document.createElement('span');
     left.textContent = p.name + (p.id === S.id ? t('lobby.you') : '');
-    // Sağda: kurucu ya da hazır durumu (kurucu hazır olmaz, o başlatır)
-    const right = document.createElement('span');
+    // Sağda: kurucu ya da hazır durumu (kurucu hazır olmaz, o başlatır); kurucuya diğerlerinde "Çıkar"
+    const right = document.createElement('div');
+    right.className = 'pr';
+    const tag = document.createElement('span');
     const host = p.id === m.hostId;
-    right.className = 'tagc' + (host ? ' host' : p.ready ? ' ready' : ' wait');
-    right.textContent = host ? t('lobby.host') : t(p.ready ? 'lobby.isReady' : 'lobby.notReady');
+    tag.className = 'tagc' + (host ? ' host' : p.ready ? ' ready' : ' wait');
+    tag.textContent = host ? t('lobby.host') : t(p.ready ? 'lobby.isReady' : 'lobby.notReady');
+    right.append(tag);
+    if (isHost && !host) right.append(kickButton(p.id));
     li.append(left, right);
     el.plist.appendChild(li);
   }
@@ -563,10 +682,13 @@ function onQuit(m) {
   g.killersLeft = m.killersLeft;
   const name = nameOf(m.id);
   const role = t(`role.${m.role}`);
-  S.world?.markLeft(m.id, t('tag.left'));
+  const kicked = m.reason === 'kicked'; // kurucu çıkardı
+  S.world?.markLeft(m.id, t(kicked ? 'tag.kicked' : 'tag.left'));
   S.world?.showRoles({ [m.id]: m.role });
-  addFeed(t('feed.quit', { name, role }) + (m.heir ? t('feed.heir') : ''), 'bad');
-  toast(t('toast.quit', { name }));
+  addFeed(t(kicked ? 'feed.kicked' : 'feed.quit', { name, role }) + (m.heir ? t('feed.heir') : ''), 'bad');
+  toast(t(kicked ? 'toast.kickedOther' : 'toast.quit', { name }));
+  S.players = S.players.filter((p) => p.id !== m.id);
+  if (S.menu) renderMenu(); // kurucunun çıkarma listesi güncellensin
   renderStatus();
 }
 
@@ -646,6 +768,16 @@ function renderMenu() {
   const paused = !!S.game?.pausedAt;
   el.pauseTitle.textContent = t(paused ? 'pause.paused' : 'pause.title');
   el.pauseNote.textContent = t(paused ? 'pause.solo' : 'pause.live');
+  // Kurucu: oyun sırasında AFK kalan ya da iki kez girmiş oyuncuyu buradan çıkarır.
+  const others = S.solo || S.id !== S.hostId ? [] : S.players.filter((p) => p.id !== S.id);
+  el.kickBox.classList.toggle('hidden', !others.length);
+  el.kickList.replaceChildren(...others.map((p) => {
+    const li = document.createElement('li');
+    const name = document.createElement('span');
+    name.textContent = p.name;
+    li.append(name, kickButton(p.id));
+    return li;
+  }));
 }
 
 function openMenu() {
@@ -672,7 +804,7 @@ function resetToHome() {
   closeMenu(false);
   if (joy.active) joyRelease();
   el.joy.classList.remove('on');
-  S.game = null; S.code = null; S.hostId = null;
+  S.game = null; S.code = null; S.hostId = null; S.roomEndAt = 0; S.players = [];
   el.revealCard.classList.add('hidden'); // rol kartı açıkken bağlantı koparsa ana menüyü kapatmasın
   document.body.classList.remove('spectator');
   exitLock();
@@ -886,6 +1018,93 @@ const touchEnd = (e) => {
 };
 el.canvas.addEventListener('touchend', touchEnd, { passive: true });
 el.canvas.addEventListener('touchcancel', touchEnd, { passive: true });
+
+// ---------------------------------------------------------------------------
+// Nasıl oynanır: adım adım anlatım. Her adımın görseli oyundan çekilmiş bir ekran görüntüsü
+// (public/howto/<adım>-<dil>.webp), başlığı ve maddeleri i18n.js'de (ht.<adım>.t / ht.<adım>.b, satır satır).
+// ---------------------------------------------------------------------------
+const HOWTO = ['roles', 'look', 'killer', 'citizen', 'police', 'win', 'controls', 'rooms'];
+let htStep = 0;
+let htSwipe = null;
+
+function howtoOpen() {
+  return !el.howto.classList.contains('hidden');
+}
+
+function howtoImg(step, lang = getLang()) {
+  return `howto/${step}-${lang}.webp`;
+}
+
+function openHowto(step = 0) {
+  htStep = step;
+  el.howto.classList.remove('hidden');
+  renderHowto();
+  el.htNext.focus({ preventScroll: true });
+}
+
+function closeHowto() {
+  el.howto.classList.add('hidden');
+}
+
+function goHowto(step) {
+  if (step >= HOWTO.length) return closeHowto();
+  htStep = clamp(step, 0, HOWTO.length - 1);
+  renderHowto();
+}
+
+function renderHowto() {
+  const k = HOWTO[htStep];
+  const last = htStep === HOWTO.length - 1;
+  el.htStep.textContent = t('ht.step', { n: htStep + 1, total: HOWTO.length });
+  el.htTitle.textContent = t(`ht.${k}.t`);
+  el.htText.replaceChildren(...t(`ht.${k}.b`).split('\n').map((line) => {
+    const li = document.createElement('li');
+    li.textContent = line;
+    return li;
+  }));
+  // Görsel: arayüz dilindeki sürüm; yoksa Türkçesi
+  el.htImg.onerror = () => {
+    if (!el.htImg.src.endsWith(howtoImg(k, 'tr'))) el.htImg.src = howtoImg(k, 'tr');
+  };
+  el.htImg.src = howtoImg(k);
+  el.htImg.alt = t(`ht.${k}.t`);
+  el.htImg.style.animation = 'none';
+  void el.htImg.offsetWidth; // geçiş animasyonunu her adımda yeniden başlat
+  el.htImg.style.animation = '';
+  if (!last) new Image().src = howtoImg(HOWTO[htStep + 1]); // sonraki görseli önceden yükle
+  el.htDots.replaceChildren(...HOWTO.map((s, i) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = i === htStep ? 'on' : '';
+    b.setAttribute('aria-label', t('ht.step', { n: i + 1, total: HOWTO.length }));
+    b.onclick = () => goHowto(i);
+    return b;
+  }));
+  el.htPrev.disabled = htStep === 0;
+  el.htNext.textContent = t(last ? 'ht.done' : 'ht.next');
+}
+
+for (const b of document.querySelectorAll('[data-howto]')) b.addEventListener('click', () => openHowto(0));
+el.htClose.onclick = closeHowto;
+el.htPrev.onclick = () => goHowto(htStep - 1);
+el.htNext.onclick = () => goHowto(htStep + 1);
+el.howto.addEventListener('click', (e) => { if (e.target === el.howto) closeHowto(); }); // dışına tıklayınca kapanır
+// Telefonda görselin üstünde sağa / sola kaydırarak adım değiştir
+el.htImgBox.addEventListener('touchstart', (e) => { htSwipe = e.touches[0].clientX; }, { passive: true });
+el.htImgBox.addEventListener('touchend', (e) => {
+  if (htSwipe === null) return;
+  const dx = e.changedTouches[0].clientX - htSwipe;
+  htSwipe = null;
+  if (Math.abs(dx) > 45) goHowto(htStep + (dx < 0 ? 1 : -1));
+}, { passive: true });
+// Açıkken klavye yalnızca anlatımı yönetir (oyunun tuşlarına gitmez): ← → Esc
+window.addEventListener('keydown', (e) => {
+  if (!howtoOpen()) return;
+  e.stopImmediatePropagation();
+  if (e.key === 'Escape') { e.preventDefault(); closeHowto(); }
+  else if (e.key === 'ArrowRight') goHowto(htStep + 1);
+  else if (e.key === 'ArrowLeft') goHowto(htStep - 1);
+}, true);
 
 window.addEventListener('keydown', (e) => {
   const tag = (e.target.tagName || '').toLowerCase();
@@ -1180,7 +1399,20 @@ function frame(now) {
 // Düğmeler
 // ---------------------------------------------------------------------------
 el.btnQuick.onclick = () => joinRoom({ quick: true });
-el.btnCreate.onclick = () => joinRoom({ create: true });
+el.btnCreate.onclick = () => joinRoom({ create: true, public: S.roomType === 'public' });
+el.roomType.addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-v]');
+  if (!b) return;
+  S.roomType = b.dataset.v;
+  try { localStorage.setItem('wk-roomType', S.roomType); } catch { /* yoksay */ }
+  renderSeg(el.roomType, S.roomType);
+});
+// Lobide görünürlük: yalnızca kurucu değiştirir (sunucu da denetler)
+el.visSeg.addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-v]');
+  if (!b || b.disabled || S.id !== S.hostId) return;
+  send({ t: 'settings', public: b.dataset.v === 'public' });
+});
 el.btnJoin.onclick = () => {
   const code = el.joinCode.value.trim();
   if (code.length < 3) return toast(t('toast.enterCode'), 'bad');
@@ -1231,13 +1463,18 @@ function applyLang(l) {
   if (S.code) el.btnLeave.textContent = t(S.solo ? 'lobby.back' : 'lobby.leave');
   renderTimeNote();
   renderMenu();
+  renderRooms();
+  if (S.code) renderVisibility();
+  if (howtoOpen()) renderHowto();
+  el.roomTimer._text = null; // dil değişince süre yazısı hemen yenilensin
+  tickRoomTimers();
   updateHint();
 }
 
 /** Oyunun eski adıyla (hpv-*) kaydedilmiş seçimleri yeni anahtarlara (wk-*) bir kez taşır. */
 function migrateStorage() {
   try {
-    for (const k of ['name', 'gender', 'quality', 'lang']) {
+    for (const k of ['name', 'gender', 'quality', 'lang', 'roomType']) {
       const old = localStorage.getItem(`hpv-${k}`);
       if (old !== null && localStorage.getItem(`wk-${k}`) === null) localStorage.setItem(`wk-${k}`, old);
       localStorage.removeItem(`hpv-${k}`);
@@ -1251,8 +1488,10 @@ function migrateStorage() {
   try {
     const g = localStorage.getItem('wk-gender');
     if (g === 'm' || g === 'f') S.gender = g;
+    if (localStorage.getItem('wk-roomType') === 'private') S.roomType = 'private';
   } catch { /* yoksay */ }
   renderGender();
+  renderSeg(el.roomType, S.roomType);
   const room = new URLSearchParams(location.search).get('room');
   if (room) el.joinCode.value = room.toUpperCase().slice(0, 5);
 

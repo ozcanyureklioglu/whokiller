@@ -16,7 +16,10 @@
   <!-- ANA MENÜ -->
   <main id="home" class="screen">
     <div class="card">
-      <h1>Who<b>Killer</b></h1>
+      <div class="homeHead">
+        <h1>Who<b>Killer</b></h1>
+        <button type="button" class="ghost pill" data-howto data-i18n="ht.open">❔ Nasıl oynanır?</button>
+      </div>
       <p class="tag" data-i18n="home.tag">Göz kırpmayı yakala&hellip; ya da fark edip öl.</p>
       <label class="field"><span data-i18n="home.name">Adın</span>
         <input id="name" maxlength="14" autocomplete="off" placeholder="Takma adın" data-i18n-ph="home.namePh">
@@ -29,6 +32,11 @@
         </div>
       </div>
       <button id="btnQuick" class="primary" disabled><span data-i18n="home.quick">Hızlı oyun</span><small data-i18n="home.quickSub">botlara karşı, tek başına</small></button>
+      <!-- Kurulacak odanın türü: herkese açık (aşağıdaki listede görünür) ya da özel (yalnızca kodla) -->
+      <div id="roomType" class="seg small" role="radiogroup">
+        <button type="button" data-v="public" role="radio" aria-checked="true" data-i18n="room.public">🌐 Herkese açık</button>
+        <button type="button" data-v="private" role="radio" aria-checked="false" data-i18n="room.private">🔒 Özel (kodla)</button>
+      </div>
       <div class="split">
         <button id="btnCreate" disabled data-i18n="home.create">Oda kur</button>
         <div class="join">
@@ -36,6 +44,12 @@
           <button id="btnJoin" disabled data-i18n="home.join">Katıl</button>
         </div>
       </div>
+      <!-- Açık odalar (sunucu "rooms" mesajıyla günceller) -->
+      <section id="roomList">
+        <div class="rlHead"><b data-i18n="list.title">Açık odalar</b><small id="rlCount" class="muted"></small></div>
+        <ul id="rooms"></ul>
+        <p id="roomsEmpty" class="muted" data-i18n="list.empty">Şu an açık oda yok. İlk odayı sen kur!</p>
+      </section>
       <p id="connState" class="muted" data-i18n="conn.connecting">Sunucuya bağlanıyor&hellip;</p>
       <div class="qrows">
         <label class="qrow muted"><span data-i18n="home.lang">Dil</span>
@@ -65,6 +79,15 @@
         <div><span class="muted" data-i18n="lobby.code">Oda kodu</span><b id="roomCode">-----</b></div>
         <button id="btnCopy" class="ghost" data-i18n="lobby.copy">Davet linkini kopyala</button>
       </div>
+      <!-- Görünürlük (kurucu değiştirir) + odanın kapanmasına kalan süre -->
+      <div id="roomRow" class="roomRow">
+        <div id="visSeg" class="seg small" role="radiogroup">
+          <button type="button" data-v="public" role="radio" data-i18n="room.public">🌐 Herkese açık</button>
+          <button type="button" data-v="private" role="radio" data-i18n="room.private">🔒 Özel (kodla)</button>
+        </div>
+        <small id="roomTimer" class="muted"></small>
+      </div>
+      <p id="visNote" class="muted"></p>
       <ul id="plist"></ul>
       <div id="settings">
         <label class="field"><span><span data-i18n="lobby.total">Toplam oyuncu:</span> <b id="totalVal">6</b></span>
@@ -107,6 +130,7 @@
         <button id="btnStart" class="primary" data-i18n="lobby.start">Başlat</button>
         <button id="btnLeave" class="ghost" data-i18n="lobby.leave">Odadan çık</button>
       </div>
+      <p class="htLink"><button type="button" class="ghost pill" data-howto data-i18n="ht.open">❔ Nasıl oynanır?</button></p>
     </div>
   </main>
 
@@ -152,6 +176,11 @@
         <button id="btnQuit" class="ghost danger" data-i18n="pause.quit">Oyundan çık</button>
       </div>
       <p class="muted small" data-i18n="pause.quitNote">Çıkarsan herkese bildirilir.</p>
+      <!-- Kurucu: oyun sırasında AFK kalan / iki kez girmiş oyuncuyu çıkarır -->
+      <div id="kickBox" class="hidden">
+        <p class="kickTitle" data-i18n="pause.kickTitle">Oyuncuyu odadan çıkar</p>
+        <ul id="kickList" class="kickList"></ul>
+      </div>
     </div>
   </section>
 
@@ -167,6 +196,24 @@
         <button id="btnHome" class="ghost" data-i18n="over.home">Ana menü</button>
       </div>
       <p id="overWait" class="muted"></p>
+    </div>
+  </section>
+
+  <!-- NASIL OYNANIR: adım adım anlatım (görseller public/howto/<adım>-<dil>.webp; içerik main.js → HOWTO) -->
+  <section id="howto" class="screen overlay hidden">
+    <div class="card howto" role="dialog" aria-modal="true" aria-labelledby="htTitle">
+      <div class="htHead">
+        <span id="htStep" class="muted"></span>
+        <button type="button" id="htClose" class="ghost" aria-label="Kapat" data-i18n-aria="ht.close">✕</button>
+      </div>
+      <div class="htImg" id="htImgBox"><img id="htImg" alt="" decoding="async"></div>
+      <h2 id="htTitle"></h2>
+      <ul id="htText"></ul>
+      <div id="htDots" class="htDots"></div>
+      <div class="split">
+        <button type="button" id="htPrev" class="ghost" data-i18n="ht.prev">‹ Geri</button>
+        <button type="button" id="htNext" class="primary" data-i18n="ht.next">İleri ›</button>
+      </div>
     </div>
   </section>
 

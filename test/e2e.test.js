@@ -11,8 +11,8 @@ test.after(async () => {
   await srv.close();
 });
 
-function connect() {
-  const ws = new WebSocket(`ws://127.0.0.1:${srv.port}/ws`);
+function connect(port = srv.port) {
+  const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`);
   const msgs = [];
   const waiters = [];
   ws.onmessage = (e) => {
@@ -58,6 +58,24 @@ test('statik dosyalar ve sağlık kontrolü', async () => {
   assert.equal((await fetch(`${base}/main.js`)).status, 200);
   assert.equal((await fetch(`${base}/..%2fserver.js`)).status, 403);
   assert.equal((await fetch(`${base}/yok.html`)).status, 404);
+});
+
+test('nasıl oynanır: her adımın her dilde görseli ve metni var, görseller webp olarak sunulur', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { DICT, LANGS } = await import('../public/i18n.js');
+  const src = readFileSync(new URL('../public/main.js', import.meta.url), 'utf8');
+  const steps = JSON.parse(src.match(/const HOWTO = (\[[^\]]+\])/)[1].replace(/'/g, '"'));
+  assert.ok(steps.length >= 6, 'adımlar bulunamadı');
+  const base = `http://127.0.0.1:${srv.port}`;
+  for (const lang of Object.keys(LANGS)) {
+    for (const s of steps) {
+      const res = await fetch(`${base}/howto/${s}-${lang}.webp`);
+      assert.equal(res.status, 200, `howto/${s}-${lang}.webp yok`);
+      assert.equal(res.headers.get('content-type'), 'image/webp');
+      assert.ok((await res.arrayBuffer()).byteLength > 2000);
+      assert.ok(DICT[lang][`ht.${s}.t`] && DICT[lang][`ht.${s}.b`], `ht.${s} metni (${lang}) yok`);
+    }
+  }
 });
 
 test('hızlı oyun: önce ayar ekranı (kodla katılınamaz), sonra rol, koltuklar, bakış yayını, yetkisiz eylemler', async () => {
@@ -315,4 +333,164 @@ test('bağlantısı kopan oyuncunun çıkışı herkese bildirilir ve oyun çök
   assert.ok(g.g.length >= 4, 'oyun akmaya devam etmeli');
   a.close();
   await new Promise((r) => setTimeout(r, 100));
+});
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const lastOf = (c, type) => c.msgs.filter((m) => m.t === type).at(-1);
+
+test('herkese açık oda ana ekranda listelenir, özel oda ve hızlı oyun listelenmez; listeden katılınır', async () => {
+  const watcher = await connect();
+  await watcher.wait('welcome');
+  await watcher.wait('rooms'); // bağlanınca liste gelir
+  const host = await connect();
+  await host.wait('welcome');
+  host.send({ t: 'join', name: 'Açık', gender: 'f', create: true, public: true });
+  const lobby = await host.wait('lobby');
+  assert.equal(lobby.public, true);
+  assert.ok(lobby.expiresIn > 3500 && lobby.expiresIn <= 3600, 'oda ömrü (60 dk) lobide bildirilir');
+  const listed = await watcher.wait('rooms', (m) => m.rooms.some((r) => r.code === lobby.code));
+  const row = listed.rooms.find((r) => r.code === lobby.code);
+  assert.deepEqual([row.host, row.players, row.max, row.status], ['Açık', 1, 10, 'lobby']);
+
+  // Özel oda ve hızlı oyun listede görünmez; özel odaya kodla girilir
+  const priv = await connect();
+  await priv.wait('welcome');
+  priv.send({ t: 'join', name: 'Gizli', create: true, public: false });
+  const plobby = await priv.wait('lobby');
+  assert.equal(plobby.public, false);
+  const solo = await connect();
+  await solo.wait('welcome');
+  solo.send({ t: 'join', name: 'Tek', quick: true, public: true });
+  const slobby = await solo.wait('lobby');
+  await sleep(500);
+  const codes = lastOf(watcher, 'rooms').rooms.map((r) => r.code);
+  assert.ok(codes.includes(lobby.code));
+  assert.ok(!codes.includes(plobby.code), 'özel oda listelenmemeli');
+  assert.ok(!codes.includes(slobby.code), 'hızlı oyun listelenmemeli');
+  const byCode = await connect();
+  await byCode.wait('welcome');
+  byCode.send({ t: 'join', name: 'Davetli', room: plobby.code });
+  await byCode.wait('lobby', (m) => m.code === plobby.code);
+
+  // Listeden katıl: kişi sayısı listede güncellenir
+  watcher.send({ t: 'join', name: 'Gelen', room: row.code });
+  await watcher.wait('lobby', (m) => m.code === lobby.code);
+  await host.wait('lobby', (m) => m.players.length === 2);
+  const out = await connect();
+  await out.wait('welcome');
+  const now = await out.wait('rooms');
+  assert.equal(now.rooms.find((r) => r.code === lobby.code).players, 2);
+
+  // Kurucu odayı özel yaparsa listeden düşer ("Hazırım"lar sıfırlanmaz: oyun ayarı değil)
+  watcher.send({ t: 'ready', on: true });
+  await host.wait('lobby', (m) => m.players.some((p) => p.ready));
+  host.send({ t: 'settings', public: false });
+  const hidden = await host.wait('lobby', (m) => m.public === false);
+  assert.ok(hidden.players.some((p) => p.ready), 'görünürlük değişince hazırlar sıfırlanmamalı');
+  await out.wait('rooms', (m) => !m.rooms.some((r) => r.code === lobby.code));
+  // Kurucu olmayan görünürlüğü değiştiremez
+  watcher.send({ t: 'settings', public: true });
+  await sleep(200);
+  assert.equal(lastOf(host, 'lobby').public, false);
+  for (const c of [watcher, host, priv, solo, byCode, out]) c.close();
+  await sleep(100);
+});
+
+test('kurucu oyuncu çıkarabilir (lobide ve oyun sırasında); kurucu olmayan çıkaramaz', async () => {
+  const h = await connect();
+  await h.wait('welcome');
+  h.send({ t: 'join', name: 'Kurucu', create: true });
+  const lobby = await h.wait('lobby');
+  const a = await connect();
+  await a.wait('welcome');
+  a.send({ t: 'join', name: 'Afk', room: lobby.code });
+  await a.wait('lobby');
+  const b = await connect();
+  await b.wait('welcome');
+  b.send({ t: 'join', name: 'Normal', room: lobby.code });
+  await b.wait('lobby');
+  const full = await h.wait('lobby', (m) => m.players.length === 3);
+  const ids = Object.fromEntries(full.players.map((p) => [p.name, p.id]));
+
+  b.send({ t: 'kick', id: ids.Afk }); // kurucu değil: yok sayılır
+  await sleep(200);
+  assert.ok(!a.msgs.some((m) => m.t === 'kicked'));
+  h.send({ t: 'kick', id: ids.Kurucu }); // kendini çıkaramaz
+  await sleep(100);
+  assert.ok(!h.msgs.some((m) => m.t === 'kicked'));
+
+  // Lobide çıkarma: AFK oyuncu ana ekrana döner (açık odalar listesini alır), "Hazırım" beklenmez
+  const before = a.msgs.length;
+  h.send({ t: 'kick', id: ids.Afk });
+  await a.wait('kicked');
+  await sleep(100);
+  assert.ok(a.msgs.slice(before).some((m) => m.t === 'rooms'), 'çıkarılan liste almalı');
+  const two = await h.wait('lobby', (m) => m.players.length === 2 && m.players.some((p) => p.name === 'Normal'));
+  assert.ok(!two.players.some((p) => p.name === 'Afk'));
+
+  // Oyunda çıkarma: herkese "kurucu çıkardı" diye duyurulur, oyun sürer
+  b.send({ t: 'ready', on: true });
+  await h.wait('lobby', (m) => m.players.find((p) => p.name === 'Normal')?.ready);
+  h.send({ t: 'start' });
+  await h.wait('start');
+  await b.wait('start');
+  h.send({ t: 'kick', id: ids.Normal });
+  await b.wait('kicked');
+  const q = await h.wait('quit', (m) => m.id === ids.Normal);
+  assert.equal(q.reason, 'kicked');
+  for (const c of [h, a, b]) c.close();
+  await sleep(100);
+});
+
+test('oda süresi: kapanmadan önce uyarı, süre dolunca kapanır; oyun sürüyorsa oyun bitince; sunucu oda sınırı', async () => {
+  // Kısa ömürlü odalar: 0,8 sn ömür, 0,4 sn kala uyarı, oyun bitince 0,3 sn sonuç ekranı; en fazla 2 oda
+  const s2 = await startServer({
+    port: 0, host: '127.0.0.1',
+    rooms: {
+      overrides: { revealSeconds: 0.2, killerTimeLimit: 1.5, countdownSeconds: 0.5 },
+      roomCfg: { lifetimeMin: 0.8 / 60, warnMin: 0.4 / 60, overGraceSec: 0.3, maxRooms: 2, listThrottleMs: 50 },
+    },
+  });
+  try {
+    // 1) Lobide bekleyen oda: uyarı, sonra kapanır ve listeden düşer
+    const c = await connect(s2.port);
+    await c.wait('welcome');
+    c.send({ t: 'join', name: 'A', create: true, public: true });
+    const lobby = await c.wait('lobby');
+    const w = await c.wait('roomWarn');
+    assert.ok(w.left > 0 && w.left <= 1);
+    assert.equal((await c.wait('closed')).reason, 'expired');
+    await c.wait('rooms', (m) => !m.rooms.some((r) => r.code === lobby.code));
+    assert.equal(s2.rooms.rooms.size, 0, 'oda silinmeli');
+
+    // 2) Süre oyun sırasında dolarsa: haber verilir, oyun bitip sonuç ekranından sonra kapanır
+    const d = await connect(s2.port);
+    await d.wait('welcome');
+    d.send({ t: 'join', name: 'B', quick: true });
+    await d.wait('lobby');
+    d.send({ t: 'settings', total: 4 });
+    d.send({ t: 'start' });
+    await d.wait('start');
+    await d.wait('roomExpiring');
+    assert.ok(!d.msgs.some((m) => m.t === 'closed'), 'oyun sürerken kapanmamalı');
+    await d.wait('over');
+    assert.ok(!d.msgs.some((m) => m.t === 'closed'), 'sonuç ekranı görülmeden kapanmamalı');
+    assert.equal((await d.wait('closed')).reason, 'expired');
+    assert.equal(s2.rooms.rooms.size, 0);
+
+    // 3) Sunucuda en fazla 2 oda
+    const e1 = await connect(s2.port);
+    const e2 = await connect(s2.port);
+    const e3 = await connect(s2.port);
+    for (const e of [e1, e2, e3]) await e.wait('welcome');
+    e1.send({ t: 'join', name: 'E1', create: true });
+    await e1.wait('lobby');
+    e2.send({ t: 'join', name: 'E2', quick: true });
+    await e2.wait('lobby');
+    e3.send({ t: 'join', name: 'E3', create: true });
+    assert.equal((await e3.wait('err')).code, 'serverFull');
+    for (const x of [c, d, e1, e2, e3]) x.close();
+  } finally {
+    await s2.close();
+  }
 });
