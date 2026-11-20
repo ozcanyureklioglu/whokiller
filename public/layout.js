@@ -28,7 +28,7 @@ const wrapPi = (a) => { a = (a + Math.PI) % TAU; if (a < 0) a += TAU; return a -
  * endMin: uçtakilerin izleyiciye en küçük uzaklığı (m; küçük masada çok yakın olup ekranı kaplamasınlar)
  * edge: oturanların önündeki masa kenarına uzaklık (m) · near: izleyicinin önündeki masa ucunun uzaklığı (m)
  */
-export const ARC = { k: 0.3, view: [42, 46], nMin: 4, nMax: 10, spacing: 1.25, endMin: 2.8, edge: 0.72, near: 0.45 };
+export const ARC = { k: 0.45, view: [42, 46], nMin: 4, nMax: 10, spacing: 1.4, endMin: 2.8, edge: 0.72, near: 0.45 };
 
 /** Yayın merkezden görünen yarı açısı psi: uçlar izleyiciden tam viewDeg açısında görünsün. */
 function arcHalfAngle(viewDeg) {
